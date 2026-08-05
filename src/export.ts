@@ -44,6 +44,32 @@ function fileUrls(files?: FileAsset[]): string {
   return (files || []).map((f) => f.url).join(' | ')
 }
 
+async function loadImageForPdf(
+  url: string,
+): Promise<{ dataUrl: string; format: 'JPEG' | 'PNG'; width: number; height: number } | null> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+    const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
+      img.onerror = reject
+      img.src = dataUrl
+    })
+    const format: 'JPEG' | 'PNG' = blob.type.includes('png') ? 'PNG' : 'JPEG'
+    return { dataUrl, format, width: dims.width, height: dims.height }
+  } catch {
+    return null
+  }
+}
+
 function escapeCsv(value: string): string {
   if (/[",\n\r]/.test(value)) return `"${value.replace(/"/g, '""')}"`
   return value
@@ -274,6 +300,33 @@ export async function downloadSolicitudPdf(s: Solicitud) {
   })
   y += 60
 
+  const fotosList = s.fotoExterior || []
+  if (fotosList.length) {
+    section('Foto exterior')
+    for (const [idx, file] of fotosList.entries()) {
+      if (idx > 2) break // máx 3 fotos en el PDF
+      const img = await loadImageForPdf(file.url)
+      if (!img) continue
+
+      const maxH = idx === 0 ? 230 : 160
+      const ratio = img.width / Math.max(img.height, 1)
+      let drawW = contentW
+      let drawH = drawW / ratio
+      if (drawH > maxH) {
+        drawH = maxH
+        drawW = drawH * ratio
+      }
+
+      ensure(drawH + 14)
+      const x = margin + (contentW - drawW) / 2
+      doc.setDrawColor(220, 230, 238)
+      doc.setFillColor(255, 255, 255)
+      doc.roundedRect(x - 4, y - 4, drawW + 8, drawH + 8, 6, 6, 'FD')
+      doc.addImage(img.dataUrl, img.format, x, y, drawW, drawH, undefined, 'FAST')
+      y += drawH + 14
+    }
+  }
+
   section('YAAVSER')
   drawFields([
     { label: 'Ejecutivo', value: s.ejecutivoDeVentas },
@@ -311,14 +364,10 @@ export async function downloadSolicitudPdf(s: Solicitud) {
     { label: 'Observaciones', value: s.observaciones, wide: true },
   ])
 
-  const fotos = fileUrls(s.fotoExterior)
   const evidencias = fileUrls(s.evidenciaDePermiso)
-  if (fotos || evidencias) {
-    section('Referencias de archivos')
-    drawFields([
-      { label: 'Fotos exterior', value: fotos || undefined, wide: true },
-      { label: 'Evidencia de permiso', value: evidencias || undefined, wide: true },
-    ])
+  if (evidencias) {
+    section('Evidencia de permiso')
+    drawFields([{ label: 'Enlace / archivo', value: evidencias, wide: true }])
   }
 
   const pages = doc.getNumberOfPages()

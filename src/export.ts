@@ -44,27 +44,80 @@ function fileUrls(files?: FileAsset[]): string {
   return (files || []).map((f) => f.url).join(' | ')
 }
 
+/** Misma origen → evita CORS de S3 al embeber fotos en el PDF */
+function proxiedImageUrl(url: string): string {
+  const qs = `url=${encodeURIComponent(url)}`
+  if (import.meta.env.DEV) return `/image-proxy.php?${qs}`
+  try {
+    return new URL(`image-proxy.php?${qs}`, window.location.href).href
+  } catch {
+    return `image-proxy.php?${qs}`
+  }
+}
+
+async function blobToJpegDataUrl(
+  source: CanvasImageSource,
+  naturalWidth: number,
+  naturalHeight: number,
+): Promise<{ dataUrl: string; width: number; height: number }> {
+  const maxW = 1400
+  const scale = Math.min(1, maxW / Math.max(naturalWidth, 1))
+  const width = Math.max(1, Math.round(naturalWidth * scale))
+  const height = Math.max(1, Math.round(naturalHeight * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas no disponible')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, width, height)
+  ctx.drawImage(source, 0, 0, width, height)
+  return {
+    dataUrl: canvas.toDataURL('image/jpeg', 0.84),
+    width,
+    height,
+  }
+}
+
 async function loadImageForPdf(
   url: string,
-): Promise<{ dataUrl: string; format: 'JPEG' | 'PNG'; width: number; height: number } | null> {
+): Promise<{ dataUrl: string; format: 'JPEG'; width: number; height: number } | null> {
+  const candidates = [proxiedImageUrl(url), url]
+
+  for (const src of candidates) {
+    try {
+      const res = await fetch(src, { mode: 'cors', credentials: 'omit' })
+      if (!res.ok) continue
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const el = new Image()
+          el.onload = () => resolve(el)
+          el.onerror = () => reject(new Error('img'))
+          el.src = objectUrl
+        })
+        const jpeg = await blobToJpegDataUrl(img, img.naturalWidth, img.naturalHeight)
+        return { ...jpeg, format: 'JPEG' }
+      } finally {
+        URL.revokeObjectURL(objectUrl)
+      }
+    } catch {
+      // siguiente candidato
+    }
+  }
+
+  // Último intento: Image + crossOrigin (por si el CDN ya manda CORS)
   try {
-    const res = await fetch(url)
-    if (!res.ok) return null
-    const blob = await res.blob()
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result))
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image()
+      el.crossOrigin = 'anonymous'
+      el.onload = () => resolve(el)
+      el.onerror = () => reject(new Error('img'))
+      el.src = url
     })
-    const dims = await new Promise<{ width: number; height: number }>((resolve, reject) => {
-      const img = new Image()
-      img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
-      img.onerror = reject
-      img.src = dataUrl
-    })
-    const format: 'JPEG' | 'PNG' = blob.type.includes('png') ? 'PNG' : 'JPEG'
-    return { dataUrl, format, width: dims.width, height: dims.height }
+    const jpeg = await blobToJpegDataUrl(img, img.naturalWidth, img.naturalHeight)
+    return { ...jpeg, format: 'JPEG' }
   } catch {
     return null
   }
@@ -301,14 +354,15 @@ export async function downloadSolicitudPdf(s: Solicitud) {
   y += 60
 
   const fotosList = s.fotoExterior || []
+  let embedded = 0
   if (fotosList.length) {
     section('Foto exterior')
     for (const [idx, file] of fotosList.entries()) {
-      if (idx > 2) break // máx 3 fotos en el PDF
+      if (idx > 2) break
       const img = await loadImageForPdf(file.url)
       if (!img) continue
 
-      const maxH = idx === 0 ? 230 : 160
+      const maxH = idx === 0 ? 240 : 170
       const ratio = img.width / Math.max(img.height, 1)
       let drawW = contentW
       let drawH = drawW / ratio
@@ -317,13 +371,34 @@ export async function downloadSolicitudPdf(s: Solicitud) {
         drawW = drawH * ratio
       }
 
-      ensure(drawH + 14)
+      ensure(drawH + 16)
       const x = margin + (contentW - drawW) / 2
       doc.setDrawColor(220, 230, 238)
       doc.setFillColor(255, 255, 255)
       doc.roundedRect(x - 4, y - 4, drawW + 8, drawH + 8, 6, 6, 'FD')
-      doc.addImage(img.dataUrl, img.format, x, y, drawW, drawH, undefined, 'FAST')
+      doc.addImage(img.dataUrl, 'JPEG', x, y, drawW, drawH, undefined, 'FAST')
       y += drawH + 14
+      embedded += 1
+    }
+
+    if (!embedded) {
+      ensure(28)
+      doc.setFont('helvetica', 'italic')
+      doc.setFontSize(9)
+      doc.setTextColor(muted.r, muted.g, muted.b)
+      doc.text(
+        'No se pudo incrustar la foto (sube image-proxy.php al hosting o revisa la URL).',
+        margin,
+        y,
+      )
+      y += 18
+      drawFields([
+        {
+          label: 'Enlace de la foto',
+          value: fileUrls(fotosList) || undefined,
+          wide: true,
+        },
+      ])
     }
   }
 

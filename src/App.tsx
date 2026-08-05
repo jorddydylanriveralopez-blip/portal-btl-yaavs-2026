@@ -432,13 +432,25 @@ function Detail({
   onClose: () => void
   onToast: (msg: string) => void
 }) {
+  const [lightbox, setLightbox] = useState<number | null>(null)
+  const fotos = s.fotoExterior || []
+  const evidencias = s.evidenciaDePermiso || []
+  const gallery = [...fotos, ...evidencias]
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        if (lightbox != null) setLightbox(null)
+        else onClose()
+      }
+      if (lightbox == null || gallery.length < 2) return
+      if (e.key === 'ArrowRight') setLightbox((i) => ((i ?? 0) + 1) % gallery.length)
+      if (e.key === 'ArrowLeft')
+        setLightbox((i) => ((i ?? 0) - 1 + gallery.length) % gallery.length)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, lightbox, gallery.length])
 
   const copy = async (text?: string, label = 'Copiado') => {
     if (!text) return
@@ -448,6 +460,14 @@ function Detail({
     } catch {
       onToast('No se pudo copiar')
     }
+  }
+
+  const downloadAllImages = async () => {
+    if (!gallery.length) return
+    for (const [idx, f] of gallery.entries()) {
+      await downloadFileAsset(f, `solicitud-${s.claveYaavser || s.id}-${idx + 1}.jpg`)
+    }
+    onToast(gallery.length > 1 ? `${gallery.length} imágenes descargadas` : 'Imagen descargada')
   }
 
   return (
@@ -460,8 +480,15 @@ function Detail({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-hero">
-          {s.fotoExterior?.[0]?.url ? (
-            <img src={s.fotoExterior[0].url} alt="" />
+          {fotos[0]?.url ? (
+            <button
+              type="button"
+              className="modal-hero-img"
+              onClick={() => setLightbox(0)}
+              aria-label="Ampliar foto"
+            >
+              <img src={fotos[0].url} alt="" />
+            </button>
           ) : (
             <div className="modal-hero-empty">Sin foto exterior</div>
           )}
@@ -531,20 +558,37 @@ function Detail({
             {s.permisoConfirmado && <span className="chip">{s.permisoConfirmado}</span>}
           </div>
 
-          {(s.fotoExterior?.length || 0) > 1 && (
-            <section className="panel">
-              <h3>Más fotos</h3>
-              <div className="thumbs thumbs-row">
-                {s.fotoExterior!.slice(1).map((f, idx) => (
-                  <div key={f.url} className="thumb">
-                    <img src={f.url} alt={f.filename || 'Foto'} />
+          {gallery.length > 0 && (
+            <section className="panel gallery-panel">
+              <div className="gallery-head">
+                <h3>Imágenes</h3>
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  onClick={() => void downloadAllImages()}
+                >
+                  Descargar {gallery.length > 1 ? 'todas' : 'imagen'}
+                </button>
+              </div>
+              <div className="gallery-grid">
+                {gallery.map((f, idx) => (
+                  <div key={`${f.url}-${idx}`} className="gallery-item">
+                    <button
+                      type="button"
+                      className="gallery-thumb"
+                      onClick={() => setLightbox(idx)}
+                      aria-label={`Ampliar imagen ${idx + 1}`}
+                    >
+                      <img src={f.url} alt={f.filename || `Imagen ${idx + 1}`} />
+                      <span className="gallery-zoom">Ampliar</span>
+                    </button>
                     <button
                       type="button"
                       className="btn btn-soft"
                       onClick={() =>
                         void downloadFileAsset(
                           f,
-                          `foto-exterior-${s.claveYaavser || idx + 1}.jpg`,
+                          `solicitud-${s.claveYaavser || s.id}-${idx + 1}.jpg`,
                         ).then(() => onToast('Imagen descargada'))
                       }
                     >
@@ -554,23 +598,6 @@ function Detail({
                 ))}
               </div>
             </section>
-          )}
-
-          {(s.fotoExterior?.length || 0) === 1 && (
-            <div className="modal-photo-action">
-              <button
-                type="button"
-                className="btn btn-soft"
-                onClick={() =>
-                  void downloadFileAsset(
-                    s.fotoExterior![0],
-                    `foto-exterior-${s.claveYaavser || '1'}.jpg`,
-                  ).then(() => onToast('Imagen descargada'))
-                }
-              >
-                Descargar foto exterior
-              </button>
-            </div>
           )}
 
           <Section title="YAAVSER">
@@ -628,6 +655,73 @@ function Detail({
           </Section>
         </div>
       </aside>
+
+      {lightbox != null && gallery[lightbox] && (
+        <div
+          className="lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Imagen ampliada"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            type="button"
+            className="lightbox-close"
+            onClick={() => setLightbox(null)}
+            aria-label="Cerrar imagen"
+          >
+            ✕
+          </button>
+          {gallery.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="lightbox-nav prev"
+                aria-label="Anterior"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setLightbox((i) => ((i ?? 0) - 1 + gallery.length) % gallery.length)
+                }}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                className="lightbox-nav next"
+                aria-label="Siguiente"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setLightbox((i) => ((i ?? 0) + 1) % gallery.length)
+                }}
+              >
+                ›
+              </button>
+            </>
+          )}
+          <img
+            src={gallery[lightbox].url}
+            alt={gallery[lightbox].filename || 'Imagen ampliada'}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div className="lightbox-bar" onClick={(e) => e.stopPropagation()}>
+            <span>
+              {lightbox + 1} / {gallery.length}
+            </span>
+            <button
+              type="button"
+              className="btn btn-solid"
+              onClick={() =>
+                void downloadFileAsset(
+                  gallery[lightbox],
+                  `solicitud-${s.claveYaavser || s.id}-${lightbox + 1}.jpg`,
+                ).then(() => onToast('Imagen descargada'))
+              }
+            >
+              Descargar imagen
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

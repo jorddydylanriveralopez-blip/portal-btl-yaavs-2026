@@ -29,6 +29,14 @@ function useDebounced<T>(value: T, ms: number): T {
   return v
 }
 
+function flujoClass(flujo?: string) {
+  const f = (flujo || '').toLowerCase()
+  if (f.includes('alto')) return 'badge badge-alto'
+  if (f.includes('bajo')) return 'badge badge-bajo'
+  if (f.includes('medio')) return 'badge badge-medio'
+  return 'badge'
+}
+
 export default function App() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const debounced = useDebounced(filters, 350)
@@ -68,7 +76,6 @@ export default function App() {
     void load(debounced)
   }, [debounced, load])
 
-  // Auto-refresh cada 60s para nuevas solicitudes
   useEffect(() => {
     const id = window.setInterval(() => {
       void load(filters)
@@ -97,15 +104,12 @@ export default function App() {
 
   const stats = useMemo(() => {
     const byFlujo: Record<string, number> = {}
-    const byEstado: Record<string, number> = {}
     const withPhoto = records.filter((r) => (r.fotoExterior?.length || 0) > 0).length
     for (const r of records) {
       const f = r.flujoDePersonas || 'Sin dato'
-      const e = r.estado || 'Sin estado'
       byFlujo[f] = (byFlujo[f] || 0) + 1
-      byEstado[e] = (byEstado[e] || 0) + 1
     }
-    return { byFlujo, byEstado, withPhoto }
+    return { byFlujo, withPhoto }
   }, [records])
 
   const estados = useMemo(() => {
@@ -132,258 +136,274 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <div className="bg-mesh" aria-hidden />
-      <header className="hero">
-        <div className="hero-brand">
-          <img src={`${import.meta.env.BASE_URL}logo-yaavs-blanco.png`} alt="YAAVS" className="brand-logo" />
-          <div>
-            <p className="brand-kicker">YAAVS · Portal BTL 2026</p>
-            <h1>Solicitudes BTL</h1>
-            <p className="hero-sub">
-              Consulta, filtra y descarga las solicitudes que van llegando en tiempo real.
-            </p>
+    <div className="shell">
+      <div className="atmosphere" aria-hidden>
+        <span className="orb orb-a" />
+        <span className="orb orb-b" />
+        <span className="grain" />
+      </div>
+
+      <header className="masthead">
+        <div className="masthead-inner">
+          <div className="brand-block">
+            <img
+              src={`${import.meta.env.BASE_URL}logo-yaavs-blanco.png`}
+              alt="YAAVS"
+              className="brand-mark"
+            />
+            <div className="brand-copy">
+              <p className="eyebrow">Portal BTL 2026</p>
+              <h1 className="brand-title">YAAVS</h1>
+              <p className="lede">
+                Solicitudes en vivo — consulta, filtra y descarga en un clic.
+              </p>
+            </div>
           </div>
-        </div>
-        <div className="hero-actions">
-          <div className="stat-pill" aria-live="polite">
-            <span className="stat-dot" />
-            <strong>{total}</strong>
-            <span>en vivo</span>
+
+          <div className="masthead-actions">
+            <div className="live-chip" aria-live="polite">
+              <span className="live-dot" />
+              <strong>{total}</strong>
+              <span>en vivo</span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={loading}
+              onClick={() => void load(filters)}
+            >
+              Actualizar
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              disabled={!sorted.length}
+              onClick={() => {
+                downloadJson(sorted)
+                showToast('JSON descargado')
+              }}
+            >
+              JSON
+            </button>
+            <button
+              type="button"
+              className="btn btn-solid"
+              disabled={!sorted.length}
+              onClick={exportAll}
+            >
+              Descargar Excel
+            </button>
           </div>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={loading}
-            onClick={() => void load(filters)}
-          >
-            Actualizar
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={!sorted.length}
-            onClick={() => {
-              downloadJson(sorted)
-              showToast('JSON descargado')
-            }}
-          >
-            JSON
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={!sorted.length}
-            onClick={exportAll}
-          >
-            Descargar Excel
-          </button>
         </div>
       </header>
 
-      <section className="insight-row" aria-label="Resumen">
-        <article className="insight">
-          <span>Total filtrado</span>
-          <strong>{records.length}</strong>
-        </article>
-        <article className="insight">
-          <span>Con foto</span>
-          <strong>{stats.withPhoto}</strong>
-        </article>
-        {Object.entries(stats.byFlujo)
-          .slice(0, 3)
-          .map(([k, v]) => (
-            <article key={k} className="insight">
-              <span>Flujo {k}</span>
-              <strong>{v}</strong>
-            </article>
-          ))}
-        {updatedAt && (
-          <article className="insight insight-muted">
-            <span>Última sync</span>
-            <strong>
-              {updatedAt.toLocaleTimeString('es-MX', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </strong>
-          </article>
-        )}
-      </section>
-
-      <section className="filters" aria-label="Filtros">
-        <label className="search">
-          <span className="sr-only">Buscar</span>
-          <input
-            value={filters.search}
-            onChange={(e) => patch({ search: e.target.value })}
-            placeholder="Buscar ejecutivo, YAAVSER, clave o punto de venta…"
-          />
-        </label>
-        <label>
-          <span>Estado</span>
-          <select
-            value={filters.estado}
-            onChange={(e) => patch({ estado: e.target.value })}
-          >
-            <option value="">Todos</option>
-            {estados.map((e) => (
-              <option key={e} value={e}>
-                {e}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Flujo</span>
-          <select
-            value={filters.flujo}
-            onChange={(e) => patch({ flujo: e.target.value })}
-          >
-            <option value="">Todos</option>
-            {flujos.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Desde</span>
-          <input
-            type="date"
-            value={filters.fechaFrom}
-            onChange={(e) => patch({ fechaFrom: e.target.value })}
-          />
-        </label>
-        <label>
-          <span>Hasta</span>
-          <input
-            type="date"
-            value={filters.fechaTo}
-            onChange={(e) => patch({ fechaTo: e.target.value })}
-          />
-        </label>
-        <label>
-          <span>Orden</span>
-          <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
-            <option value="fecha-desc">Fecha ↓</option>
-            <option value="fecha-asc">Fecha ↑</option>
-            <option value="nombre">Nombre</option>
-            <option value="estado">Estado</option>
-          </select>
-        </label>
-        <div className="filter-tools">
-          <div className="view-toggle" role="group" aria-label="Vista">
-            <button
-              type="button"
-              className={view === 'grid' ? 'active' : ''}
-              onClick={() => setView('grid')}
-            >
-              Grid
-            </button>
-            <button
-              type="button"
-              className={view === 'list' ? 'active' : ''}
-              onClick={() => setView('list')}
-            >
-              Lista
-            </button>
+      <div className="page">
+        <section className="metrics" aria-label="Resumen">
+          <div className="metric">
+            <span>Filtradas</span>
+            <strong>{records.length}</strong>
           </div>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => setFilters(EMPTY_FILTERS)}
-          >
-            Limpiar
-          </button>
-        </div>
-      </section>
-
-      <main className="main">
-        {loading && <p className="status">Cargando solicitudes…</p>}
-        {error && (
-          <p className="status error">
-            {error}.{' '}
-            <button type="button" className="linkish" onClick={() => void load(filters)}>
-              Reintentar
-            </button>
-          </p>
-        )}
-        {!loading && !error && sorted.length === 0 && (
-          <div className="empty">
-            <h2>Sin resultados</h2>
-            <p>No hay solicitudes con estos filtros. Prueba limpiar o actualizar.</p>
+          <div className="metric">
+            <span>Con foto</span>
+            <strong>{stats.withPhoto}</strong>
           </div>
-        )}
+          {Object.entries(stats.byFlujo)
+            .slice(0, 3)
+            .map(([k, v]) => (
+              <div key={k} className="metric">
+                <span>Flujo {k}</span>
+                <strong>{v}</strong>
+              </div>
+            ))}
+          {updatedAt && (
+            <div className="metric metric-time">
+              <span>Última sync</span>
+              <strong>
+                {updatedAt.toLocaleTimeString('es-MX', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </strong>
+            </div>
+          )}
+        </section>
 
-        <ul className={view === 'grid' ? 'grid' : 'list'}>
-          {sorted.map((s, i) => (
-            <li
-              key={s.id}
-              className="solicitud"
-              style={{ animationDelay: `${Math.min(i, 14) * 35}ms` }}
+        <section className="toolbar" aria-label="Filtros">
+          <label className="field field-search">
+            <span className="sr-only">Buscar</span>
+            <input
+              value={filters.search}
+              onChange={(e) => patch({ search: e.target.value })}
+              placeholder="Buscar ejecutivo, YAAVSER, clave o punto de venta…"
+            />
+          </label>
+          <label className="field">
+            <span>Estado</span>
+            <select
+              value={filters.estado}
+              onChange={(e) => patch({ estado: e.target.value })}
             >
+              <option value="">Todos</option>
+              {estados.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Flujo</span>
+            <select
+              value={filters.flujo}
+              onChange={(e) => patch({ flujo: e.target.value })}
+            >
+              <option value="">Todos</option>
+              {flujos.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Desde</span>
+            <input
+              type="date"
+              value={filters.fechaFrom}
+              onChange={(e) => patch({ fechaFrom: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Hasta</span>
+            <input
+              type="date"
+              value={filters.fechaTo}
+              onChange={(e) => patch({ fechaTo: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Orden</span>
+            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+              <option value="fecha-desc">Fecha ↓</option>
+              <option value="fecha-asc">Fecha ↑</option>
+              <option value="nombre">Nombre</option>
+              <option value="estado">Estado</option>
+            </select>
+          </label>
+          <div className="toolbar-end">
+            <div className="seg" role="group" aria-label="Vista">
               <button
                 type="button"
-                className="solicitud-hit"
-                onClick={() => setSelected(s)}
+                className={view === 'grid' ? 'on' : ''}
+                onClick={() => setView('grid')}
               >
-                <div className="solicitud-media">
-                  {s.fotoExterior?.[0]?.url ? (
-                    <img src={s.fotoExterior[0].url} alt="" loading="lazy" />
-                  ) : (
-                    <div className="solicitud-placeholder">Sin foto</div>
-                  )}
-                  <span className="badge">{s.flujoDePersonas || '—'}</span>
-                </div>
-                <div className="solicitud-body">
-                  <h2>{s.puntoDeVenta || s.nombreYaavser || 'Sin nombre'}</h2>
-                  <p>
-                    {s.nombreYaavser}
-                    {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
-                  </p>
-                  <p className="meta">
-                    {s.estado}
-                    {s.municipioAlcaldia ? ` · ${s.municipioAlcaldia}` : ''}
-                  </p>
-                  <p className="meta highlight">{formatFecha(s.fechaBtl)}</p>
-                  {view === 'list' && (
-                    <p className="meta">Ejecutivo: {s.ejecutivoDeVentas || '—'}</p>
-                  )}
-                </div>
+                Grid
               </button>
-              <div className="solicitud-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    downloadSolicitud(s)
-                    showToast('Solicitud descargada')
-                  }}
-                >
-                  Descargar
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => {
-                    downloadCsv([s], `solicitud-${s.claveYaavser || s.id}.csv`)
-                    showToast('CSV listo')
-                  }}
-                >
-                  CSV
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </main>
+              <button
+                type="button"
+                className={view === 'list' ? 'on' : ''}
+                onClick={() => setView('list')}
+              >
+                Lista
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn btn-text"
+              onClick={() => setFilters(EMPTY_FILTERS)}
+            >
+              Limpiar
+            </button>
+          </div>
+        </section>
 
-      <footer className="foot">
-        <span>Portal BTL YAAVS 2026</span>
-        <span>Datos en vivo desde Zite</span>
-      </footer>
+        <main className="main">
+          {loading && <p className="status">Cargando solicitudes…</p>}
+          {error && (
+            <p className="status error">
+              {error}.{' '}
+              <button type="button" className="linkish" onClick={() => void load(filters)}>
+                Reintentar
+              </button>
+            </p>
+          )}
+          {!loading && !error && sorted.length === 0 && (
+            <div className="empty">
+              <h2>Sin resultados</h2>
+              <p>No hay solicitudes con estos filtros. Prueba limpiar o actualizar.</p>
+            </div>
+          )}
+
+          <ul className={view === 'grid' ? 'board board-grid' : 'board board-list'}>
+            {sorted.map((s, i) => (
+              <li
+                key={s.id}
+                className="item"
+                style={{ animationDelay: `${Math.min(i, 14) * 40}ms` }}
+              >
+                <button
+                  type="button"
+                  className="item-hit"
+                  onClick={() => setSelected(s)}
+                >
+                  <div className="item-media">
+                    {s.fotoExterior?.[0]?.url ? (
+                      <img src={s.fotoExterior[0].url} alt="" loading="lazy" />
+                    ) : (
+                      <div className="item-placeholder">Sin foto</div>
+                    )}
+                    <span className={flujoClass(s.flujoDePersonas)}>
+                      {s.flujoDePersonas || '—'}
+                    </span>
+                  </div>
+                  <div className="item-body">
+                    <h2>{s.puntoDeVenta || s.nombreYaavser || 'Sin nombre'}</h2>
+                    <p className="item-line">
+                      {s.nombreYaavser}
+                      {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
+                    </p>
+                    <p className="item-meta">
+                      {s.estado}
+                      {s.municipioAlcaldia ? ` · ${s.municipioAlcaldia}` : ''}
+                    </p>
+                    <p className="item-date">{formatFecha(s.fechaBtl)}</p>
+                    {view === 'list' && (
+                      <p className="item-meta">Ejecutivo: {s.ejecutivoDeVentas || '—'}</p>
+                    )}
+                  </div>
+                </button>
+                <div className="item-actions">
+                  <button
+                    type="button"
+                    className="btn btn-soft"
+                    onClick={() => {
+                      downloadSolicitud(s)
+                      showToast('Solicitud descargada')
+                    }}
+                  >
+                    Descargar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-text"
+                    onClick={() => {
+                      downloadCsv([s], `solicitud-${s.claveYaavser || s.id}.csv`)
+                      showToast('CSV listo')
+                    }}
+                  >
+                    CSV
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </main>
+
+        <footer className="foot">
+          <span>Portal BTL YAAVS 2026</span>
+          <span>Datos en vivo</span>
+        </footer>
+      </div>
 
       {selected && (
         <Detail
@@ -440,10 +460,10 @@ function Detail({
       >
         <header className="drawer-head">
           <div>
-            <p className="brand-kicker">Detalle de solicitud</p>
+            <p className="eyebrow dark">Detalle</p>
             <h2>{s.puntoDeVenta || s.nombreYaavser}</h2>
           </div>
-          <button type="button" className="btn btn-ghost" onClick={onClose}>
+          <button type="button" className="btn btn-text" onClick={onClose}>
             Cerrar
           </button>
         </header>
@@ -451,7 +471,7 @@ function Detail({
         <div className="drawer-actions">
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-solid dark"
             onClick={() => {
               downloadSolicitud(s)
               onToast('Solicitud descargada')
@@ -461,7 +481,7 @@ function Detail({
           </button>
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-soft"
             onClick={() => {
               downloadCsv([s], `solicitud-${s.claveYaavser || s.id}.csv`)
               onToast('CSV listo')
@@ -471,7 +491,7 @@ function Detail({
           </button>
           <button
             type="button"
-            className="btn btn-ghost"
+            className="btn btn-text"
             onClick={() => void copy(s.telefonoDeContacto, 'Teléfono copiado')}
           >
             Copiar tel.
@@ -479,7 +499,7 @@ function Detail({
         </div>
 
         {(s.fotoExterior?.length || 0) > 0 && (
-          <section className="block">
+          <section className="panel">
             <h3>Foto exterior</h3>
             <div className="thumbs">
               {s.fotoExterior!.map((f, idx) => (
@@ -487,7 +507,7 @@ function Detail({
                   <img src={f.url} alt={f.filename || 'Foto'} />
                   <button
                     type="button"
-                    className="btn btn-secondary btn-sm"
+                    className="btn btn-soft"
                     onClick={() =>
                       void downloadFileAsset(
                         f,
@@ -549,7 +569,7 @@ function Detail({
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="block">
+    <section className="panel">
       <h3>{title}</h3>
       <div className="rows">{children}</div>
     </section>

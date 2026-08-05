@@ -5,6 +5,7 @@ import {
   downloadFileAsset,
   downloadJson,
   downloadSolicitud,
+  downloadSolicitudPdf,
   formatFecha,
 } from './export'
 import type { Filters, Solicitud } from './types'
@@ -450,15 +451,15 @@ function Detail({
   }
 
   return (
-    <div className="drawer-backdrop" onClick={onClose} role="presentation">
+    <div className="modal-backdrop" onClick={onClose} role="presentation">
       <aside
-        className="drawer"
+        className="modal"
         role="dialog"
         aria-modal="true"
         aria-label="Detalle de solicitud"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="drawer-head">
+        <header className="modal-head">
           <div>
             <p className="eyebrow dark">Detalle</p>
             <h2>{s.puntoDeVenta || s.nombreYaavser}</h2>
@@ -468,16 +469,15 @@ function Detail({
           </button>
         </header>
 
-        <div className="drawer-actions">
+        <div className="modal-actions">
           <button
             type="button"
             className="btn btn-solid dark"
             onClick={() => {
-              downloadSolicitud(s)
-              onToast('Solicitud descargada')
+              void downloadSolicitudPdf(s).then(() => onToast('PDF descargado'))
             }}
           >
-            Descargar TXT
+            Descargar PDF
           </button>
           <button
             type="button"
@@ -488,6 +488,16 @@ function Detail({
             }}
           >
             CSV / Excel
+          </button>
+          <button
+            type="button"
+            className="btn btn-soft"
+            onClick={() => {
+              downloadSolicitud(s)
+              onToast('TXT descargado')
+            }}
+          >
+            TXT
           </button>
           <button
             type="button"

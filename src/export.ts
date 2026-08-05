@@ -135,6 +135,87 @@ export function downloadSolicitud(s: Solicitud) {
   )
 }
 
+export async function downloadSolicitudPdf(s: Solicitud) {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  const margin = 48
+  const pageW = doc.internal.pageSize.getWidth()
+  const maxW = pageW - margin * 2
+  let y = margin
+
+  const ensure = (need = 18) => {
+    if (y + need > doc.internal.pageSize.getHeight() - margin) {
+      doc.addPage()
+      y = margin
+    }
+  }
+
+  const title = (text: string) => {
+    ensure(28)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(0, 43, 68)
+    doc.text(text, margin, y)
+    y += 18
+  }
+
+  const line = (label: string, value?: string) => {
+    const val = value?.trim() ? value : '—'
+    const wrapped = doc.splitTextToSize(`${label}: ${val}`, maxW)
+    ensure(wrapped.length * 14 + 4)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.setTextColor(30, 40, 50)
+    doc.text(wrapped, margin, y)
+    y += wrapped.length * 13 + 4
+  }
+
+  doc.setFillColor(0, 43, 68)
+  doc.rect(0, 0, pageW, 72, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(16)
+  doc.text('YAAVS · Solicitud BTL 2026', margin, 34)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.text(s.puntoDeVenta || s.nombreYaavser || 'Solicitud', margin, 54)
+  y = 96
+
+  title('YAAVSER')
+  line('Ejecutivo', s.ejecutivoDeVentas)
+  line('Nombre', s.nombreYaavser)
+  line('Clave', s.claveYaavser)
+  line('Teléfono', s.telefonoDeContacto)
+  line('Punto de venta', s.puntoDeVenta)
+
+  title('Ubicación')
+  line('Estado', s.estado)
+  line('Municipio / Alcaldía', s.municipioAlcaldia)
+  line('Tipo de zona', s.tipoDeZona)
+  line('Flujo', s.flujoDePersonas)
+  line('Google Maps', s.ubicacionGoogleMaps)
+
+  title('Evento')
+  line('Fecha BTL', formatFecha(s.fechaBtl))
+  line('Hora de inicio', s.horaDeInicio)
+  line('Servicios', (s.serviciosActuales || []).join(', '))
+  line('Otro servicio', s.otroServicio)
+  line('Permiso', s.permisoConfirmado)
+  line('Medidas', s.medidasDelEspacio)
+  line('Materiales', (s.materialesRequeridos || []).join(', '))
+  line('Promocionales', (s.entregaDePromocionales || []).join(', '))
+  line('Aportación', s.aportacionDelYaavser)
+  line('Detalle aportación', s.detalleDeAportacion)
+  line('Observaciones', s.observaciones)
+
+  title('Archivos')
+  line('Fotos', fileUrls(s.fotoExterior))
+  line('Evidencias', fileUrls(s.evidenciaDePermiso))
+
+  const name = (s.claveYaavser || s.nombreYaavser || s.id).replace(/\s+/g, '-')
+  doc.save(`solicitud-${name}.pdf`)
+}
+
 export async function downloadFileAsset(file: FileAsset, fallbackName: string) {
   try {
     const res = await fetch(file.url)

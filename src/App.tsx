@@ -154,9 +154,9 @@ export default function App() {
             />
             <div className="brand-copy">
               <p className="eyebrow">Portal BTL 2026</p>
-              <h1 className="brand-title">YAAVS</h1>
+              <h1 className="brand-title">Solicitudes BTL</h1>
               <p className="lede">
-                Solicitudes en vivo — consulta, filtra y descarga en un clic.
+                Consulta, filtra y descarga las solicitudes que van llegando.
               </p>
             </div>
           </div>
@@ -459,119 +459,174 @@ function Detail({
         aria-label="Detalle de solicitud"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="modal-head">
-          <div>
-            <p className="eyebrow dark">Detalle</p>
-            <h2>{s.puntoDeVenta || s.nombreYaavser}</h2>
+        <div className="modal-hero">
+          {s.fotoExterior?.[0]?.url ? (
+            <img src={s.fotoExterior[0].url} alt="" />
+          ) : (
+            <div className="modal-hero-empty">Sin foto exterior</div>
+          )}
+          <div className="modal-hero-veil" />
+          <div className="modal-hero-top">
+            <span className={flujoClass(s.flujoDePersonas)}>
+              {s.flujoDePersonas || 'Flujo'}
+            </span>
+            <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+              ✕
+            </button>
           </div>
-          <button type="button" className="btn btn-text" onClick={onClose}>
-            Cerrar
-          </button>
-        </header>
-
-        <div className="modal-actions">
-          <button
-            type="button"
-            className="btn btn-solid dark"
-            onClick={() => {
-              void downloadSolicitudPdf(s).then(() => onToast('PDF descargado'))
-            }}
-          >
-            Descargar PDF
-          </button>
-          <button
-            type="button"
-            className="btn btn-soft"
-            onClick={() => {
-              downloadCsv([s], `solicitud-${s.claveYaavser || s.id}.csv`)
-              onToast('CSV listo')
-            }}
-          >
-            CSV / Excel
-          </button>
-          <button
-            type="button"
-            className="btn btn-soft"
-            onClick={() => {
-              downloadSolicitud(s)
-              onToast('TXT descargado')
-            }}
-          >
-            TXT
-          </button>
-          <button
-            type="button"
-            className="btn btn-text"
-            onClick={() => void copy(s.telefonoDeContacto, 'Teléfono copiado')}
-          >
-            Copiar tel.
-          </button>
+          <div className="modal-hero-copy">
+            <p className="eyebrow">Solicitud BTL</p>
+            <h2>{s.puntoDeVenta || s.nombreYaavser}</h2>
+            <p>
+              {formatFecha(s.fechaBtl)}
+              {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
+            </p>
+          </div>
         </div>
 
-        {(s.fotoExterior?.length || 0) > 0 && (
-          <section className="panel">
-            <h3>Foto exterior</h3>
-            <div className="thumbs">
-              {s.fotoExterior!.map((f, idx) => (
-                <div key={f.url} className="thumb">
-                  <img src={f.url} alt={f.filename || 'Foto'} />
-                  <button
-                    type="button"
-                    className="btn btn-soft"
-                    onClick={() =>
-                      void downloadFileAsset(
-                        f,
-                        `foto-exterior-${s.claveYaavser || idx}.jpg`,
-                      ).then(() => onToast('Imagen descargada'))
-                    }
-                  >
-                    Descargar imagen
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        <div className="modal-body">
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn-solid dark"
+              onClick={() => {
+                void downloadSolicitudPdf(s).then(() => onToast('PDF descargado'))
+              }}
+            >
+              Descargar PDF
+            </button>
+            <button
+              type="button"
+              className="btn btn-soft"
+              onClick={() => {
+                downloadCsv([s], `solicitud-${s.claveYaavser || s.id}.csv`)
+                onToast('CSV listo')
+              }}
+            >
+              CSV
+            </button>
+            <button
+              type="button"
+              className="btn btn-soft"
+              onClick={() => {
+                downloadSolicitud(s)
+                onToast('TXT descargado')
+              }}
+            >
+              TXT
+            </button>
+            <button
+              type="button"
+              className="btn btn-text"
+              onClick={() => void copy(s.telefonoDeContacto, 'Teléfono copiado')}
+            >
+              Copiar tel.
+            </button>
+          </div>
 
-        <Section title="Información del YAAVSER">
-          <Row label="Ejecutivo de Ventas" value={s.ejecutivoDeVentas} />
-          <Row label="Nombre YAAVSER" value={s.nombreYaavser} />
-          <Row label="Clave YAAVSER" value={s.claveYaavser} />
-          <Row label="Teléfono" value={s.telefonoDeContacto} />
-          <Row label="Punto de Venta" value={s.puntoDeVenta} />
-        </Section>
+          <div className="chip-row">
+            {s.estado && <span className="chip">{s.estado}</span>}
+            {s.municipioAlcaldia && <span className="chip">{s.municipioAlcaldia}</span>}
+            {s.tipoDeZona && <span className="chip">{s.tipoDeZona}</span>}
+            {s.permisoConfirmado && <span className="chip">{s.permisoConfirmado}</span>}
+          </div>
 
-        <Section title="Ubicación">
-          <Row label="Estado" value={s.estado} />
-          <Row label="Municipio / Alcaldía" value={s.municipioAlcaldia} />
-          <Row label="Tipo de Zona" value={s.tipoDeZona} />
-          <Row label="Flujo de Personas" value={s.flujoDePersonas} />
-          {s.ubicacionGoogleMaps && (
-            <p className="row">
-              <span>Google Maps</span>
-              <a href={s.ubicacionGoogleMaps} target="_blank" rel="noreferrer">
-                Abrir ubicación
-              </a>
-            </p>
+          {(s.fotoExterior?.length || 0) > 1 && (
+            <section className="panel">
+              <h3>Más fotos</h3>
+              <div className="thumbs thumbs-row">
+                {s.fotoExterior!.slice(1).map((f, idx) => (
+                  <div key={f.url} className="thumb">
+                    <img src={f.url} alt={f.filename || 'Foto'} />
+                    <button
+                      type="button"
+                      className="btn btn-soft"
+                      onClick={() =>
+                        void downloadFileAsset(
+                          f,
+                          `foto-exterior-${s.claveYaavser || idx + 1}.jpg`,
+                        ).then(() => onToast('Imagen descargada'))
+                      }
+                    >
+                      Descargar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
-        </Section>
 
-        <Section title="Servicios y evento">
-          <Row label="Servicios" value={(s.serviciosActuales || []).join(', ')} />
-          <Row label="Otro servicio" value={s.otroServicio} />
-          <Row label="Fecha BTL" value={formatFecha(s.fechaBtl)} />
-          <Row label="Hora de inicio" value={s.horaDeInicio} />
-          <Row label="Permiso" value={s.permisoConfirmado} />
-          <Row label="Medidas" value={s.medidasDelEspacio} />
-          <Row label="Materiales" value={(s.materialesRequeridos || []).join(', ')} />
-          <Row
-            label="Promocionales"
-            value={(s.entregaDePromocionales || []).join(', ')}
-          />
-          <Row label="Aportación" value={s.aportacionDelYaavser} />
-          <Row label="Detalle aportación" value={s.detalleDeAportacion} />
-          <Row label="Observaciones" value={s.observaciones} />
-        </Section>
+          {(s.fotoExterior?.length || 0) === 1 && (
+            <div className="modal-photo-action">
+              <button
+                type="button"
+                className="btn btn-soft"
+                onClick={() =>
+                  void downloadFileAsset(
+                    s.fotoExterior![0],
+                    `foto-exterior-${s.claveYaavser || '1'}.jpg`,
+                  ).then(() => onToast('Imagen descargada'))
+                }
+              >
+                Descargar foto exterior
+              </button>
+            </div>
+          )}
+
+          <Section title="YAAVSER">
+            <div className="fact-grid">
+              <Fact label="Ejecutivo" value={s.ejecutivoDeVentas} />
+              <Fact label="Nombre" value={s.nombreYaavser} />
+              <Fact label="Clave" value={s.claveYaavser} />
+              <Fact label="Teléfono" value={s.telefonoDeContacto} />
+              <Fact label="Punto de venta" value={s.puntoDeVenta} wide />
+            </div>
+          </Section>
+
+          <Section title="Ubicación">
+            <div className="fact-grid">
+              <Fact label="Estado" value={s.estado} />
+              <Fact label="Municipio / Alcaldía" value={s.municipioAlcaldia} />
+              <Fact label="Tipo de zona" value={s.tipoDeZona} />
+              <Fact label="Flujo" value={s.flujoDePersonas} />
+            </div>
+            {s.ubicacionGoogleMaps && (
+              <p className="maps-link">
+                <a href={s.ubicacionGoogleMaps} target="_blank" rel="noreferrer">
+                  Abrir en Google Maps →
+                </a>
+              </p>
+            )}
+          </Section>
+
+          <Section title="Evento BTL">
+            <div className="fact-grid">
+              <Fact label="Fecha" value={formatFecha(s.fechaBtl)} />
+              <Fact label="Hora de inicio" value={s.horaDeInicio} />
+              <Fact label="Permiso" value={s.permisoConfirmado} />
+              <Fact label="Medidas" value={s.medidasDelEspacio} />
+              <Fact
+                label="Servicios"
+                value={(s.serviciosActuales || []).join(', ')}
+                wide
+              />
+              <Fact label="Otro servicio" value={s.otroServicio} wide />
+              <Fact
+                label="Materiales"
+                value={(s.materialesRequeridos || []).join(', ')}
+                wide
+              />
+              <Fact
+                label="Promocionales"
+                value={(s.entregaDePromocionales || []).join(', ')}
+                wide
+              />
+              <Fact label="Aportación" value={s.aportacionDelYaavser} />
+              <Fact label="Detalle aportación" value={s.detalleDeAportacion} />
+              <Fact label="Observaciones" value={s.observaciones} wide />
+            </div>
+          </Section>
+        </div>
       </aside>
     </div>
   )
@@ -581,17 +636,25 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="panel">
       <h3>{title}</h3>
-      <div className="rows">{children}</div>
+      {children}
     </section>
   )
 }
 
-function Row({ label, value }: { label: string; value?: string }) {
+function Fact({
+  label,
+  value,
+  wide,
+}: {
+  label: string
+  value?: string
+  wide?: boolean
+}) {
   if (!value) return null
   return (
-    <p className="row">
+    <div className={wide ? 'fact fact-wide' : 'fact'}>
       <span>{label}</span>
       <strong>{value}</strong>
-    </p>
+    </div>
   )
 }

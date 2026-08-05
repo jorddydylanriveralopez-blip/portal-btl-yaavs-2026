@@ -86,9 +86,20 @@ export function downloadJson(records: Solicitud[], filename?: string) {
   )
 }
 
+export function formatFecha(iso?: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso.includes('T') ? iso : `${iso}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('es-MX', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
 export function solicitudToPlainText(s: Solicitud): string {
   const lines: string[] = [
-    'SOLICITUD BTL YAAVS 2026',
+    'SOLICITUD BTL 2026',
     '========================',
     `ID: ${s.id}`,
     `Fecha BTL: ${formatFecha(s.fechaBtl)}`,
@@ -138,79 +149,189 @@ export function downloadSolicitud(s: Solicitud) {
 export async function downloadSolicitudPdf(s: Solicitud) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
-  const margin = 48
   const pageW = doc.internal.pageSize.getWidth()
-  const maxW = pageW - margin * 2
-  let y = margin
+  const pageH = doc.internal.pageSize.getHeight()
+  const margin = 42
+  const contentW = pageW - margin * 2
+  let y = 0
 
-  const ensure = (need = 18) => {
-    if (y + need > doc.internal.pageSize.getHeight() - margin) {
+  const navy = { r: 0, g: 43, b: 68 }
+  const cyan = { r: 0, g: 160, b: 200 }
+  const muted = { r: 90, g: 110, b: 128 }
+  const ink = { r: 20, g: 32, b: 42 }
+
+  const ensure = (need: number) => {
+    if (y + need > pageH - 48) {
       doc.addPage()
-      y = margin
+      doc.setFillColor(cyan.r, cyan.g, cyan.b)
+      doc.rect(0, 0, pageW, 4, 'F')
+      y = 36
     }
   }
 
-  const title = (text: string) => {
-    ensure(28)
+  const section = (label: string) => {
+    ensure(36)
+    y += 10
+    doc.setFillColor(navy.r, navy.g, navy.b)
+    doc.roundedRect(margin, y, contentW, 22, 4, 4, 'F')
+    doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
-    doc.setTextColor(0, 43, 68)
-    doc.text(text, margin, y)
-    y += 18
+    doc.setFontSize(9)
+    doc.text(label.toUpperCase(), margin + 10, y + 14)
+    y += 34
   }
 
-  const line = (label: string, value?: string) => {
-    const val = value?.trim() ? value : '—'
-    const wrapped = doc.splitTextToSize(`${label}: ${val}`, maxW)
-    ensure(wrapped.length * 14 + 4)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    doc.setTextColor(30, 40, 50)
-    doc.text(wrapped, margin, y)
-    y += wrapped.length * 13 + 4
+  type Field = { label: string; value?: string; wide?: boolean }
+  const drawFields = (fields: Field[]) => {
+    const gap = 10
+    const colW = (contentW - gap) / 2
+    let col = 0
+    let rowY = y
+
+    for (const f of fields) {
+      const val = f.value?.trim()
+      if (!val) continue
+
+      const boxW = f.wide ? contentW : colW
+      if (f.wide && col === 1) {
+        y = rowY
+        col = 0
+      }
+
+      const x = margin + (col === 1 && !f.wide ? colW + gap : 0)
+      const lines = doc.splitTextToSize(val, boxW - 16) as string[]
+      const boxH = Math.max(40, 18 + 12 + lines.length * 12)
+
+      ensure(boxH + 8)
+      if (col === 0) rowY = y
+
+      doc.setFillColor(245, 249, 252)
+      doc.setDrawColor(220, 230, 238)
+      doc.roundedRect(x, y, boxW, boxH, 5, 5, 'FD')
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(7.5)
+      doc.setTextColor(muted.r, muted.g, muted.b)
+      doc.text(f.label.toUpperCase(), x + 8, y + 14)
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9.5)
+      doc.setTextColor(ink.r, ink.g, ink.b)
+      doc.text(lines, x + 8, y + 28)
+
+      if (f.wide || col === 1) {
+        y = Math.max(rowY, y) + boxH + 8
+        col = 0
+        rowY = y
+      } else {
+        col = 1
+        rowY = Math.max(rowY, y + boxH + 8)
+      }
+    }
+    if (col === 1) y = rowY
   }
 
-  doc.setFillColor(0, 43, 68)
-  doc.rect(0, 0, pageW, 72, 'F')
-  doc.setTextColor(255, 255, 255)
+  doc.setFillColor(navy.r, navy.g, navy.b)
+  doc.rect(0, 0, pageW, 88, 'F')
+  doc.setFillColor(cyan.r, cyan.g, cyan.b)
+  doc.rect(0, 88, pageW, 4, 'F')
+
+  doc.setTextColor(180, 220, 235)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(16)
-  doc.text('YAAVS · Solicitud BTL 2026', margin, 34)
+  doc.setFontSize(8)
+  doc.text('PORTAL BTL 2026', margin, 28)
+
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(18)
+  doc.text('Solicitud de activación BTL', margin, 50)
+
+  const subtitle = s.puntoDeVenta || s.nombreYaavser || 'Sin punto de venta'
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
-  doc.text(s.puntoDeVenta || s.nombreYaavser || 'Solicitud', margin, 54)
-  y = 96
+  doc.setFontSize(11)
+  doc.setTextColor(210, 230, 240)
+  doc.text(doc.splitTextToSize(subtitle, contentW) as string[], margin, 70)
 
-  title('YAAVSER')
-  line('Ejecutivo', s.ejecutivoDeVentas)
-  line('Nombre', s.nombreYaavser)
-  line('Clave', s.claveYaavser)
-  line('Teléfono', s.telefonoDeContacto)
-  line('Punto de venta', s.puntoDeVenta)
+  y = 112
 
-  title('Ubicación')
-  line('Estado', s.estado)
-  line('Municipio / Alcaldía', s.municipioAlcaldia)
-  line('Tipo de zona', s.tipoDeZona)
-  line('Flujo', s.flujoDePersonas)
-  line('Google Maps', s.ubicacionGoogleMaps)
+  doc.setFillColor(236, 245, 250)
+  doc.roundedRect(margin, y, contentW, 44, 6, 6, 'F')
+  const summary = [
+    { k: 'Fecha', v: formatFecha(s.fechaBtl) },
+    { k: 'Clave', v: s.claveYaavser || '—' },
+    { k: 'Flujo', v: s.flujoDePersonas || '—' },
+    { k: 'Estado', v: s.estado || '—' },
+  ]
+  summary.forEach((item, i) => {
+    const x = margin + 12 + i * (contentW / 4)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7)
+    doc.setTextColor(muted.r, muted.g, muted.b)
+    doc.text(item.k.toUpperCase(), x, y + 16)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(ink.r, ink.g, ink.b)
+    doc.text(doc.splitTextToSize(item.v, contentW / 4 - 16) as string[], x, y + 30)
+  })
+  y += 60
 
-  title('Evento')
-  line('Fecha BTL', formatFecha(s.fechaBtl))
-  line('Hora de inicio', s.horaDeInicio)
-  line('Servicios', (s.serviciosActuales || []).join(', '))
-  line('Otro servicio', s.otroServicio)
-  line('Permiso', s.permisoConfirmado)
-  line('Medidas', s.medidasDelEspacio)
-  line('Materiales', (s.materialesRequeridos || []).join(', '))
-  line('Promocionales', (s.entregaDePromocionales || []).join(', '))
-  line('Aportación', s.aportacionDelYaavser)
-  line('Detalle aportación', s.detalleDeAportacion)
-  line('Observaciones', s.observaciones)
+  section('YAAVSER')
+  drawFields([
+    { label: 'Ejecutivo', value: s.ejecutivoDeVentas },
+    { label: 'Nombre', value: s.nombreYaavser },
+    { label: 'Clave', value: s.claveYaavser },
+    { label: 'Teléfono', value: s.telefonoDeContacto },
+    { label: 'Punto de venta', value: s.puntoDeVenta, wide: true },
+  ])
 
-  title('Archivos')
-  line('Fotos', fileUrls(s.fotoExterior))
-  line('Evidencias', fileUrls(s.evidenciaDePermiso))
+  section('Ubicación')
+  drawFields([
+    { label: 'Estado', value: s.estado },
+    { label: 'Municipio / Alcaldía', value: s.municipioAlcaldia },
+    { label: 'Tipo de zona', value: s.tipoDeZona },
+    { label: 'Flujo de personas', value: s.flujoDePersonas },
+    { label: 'Google Maps', value: s.ubicacionGoogleMaps, wide: true },
+  ])
+
+  section('Evento BTL')
+  drawFields([
+    { label: 'Fecha BTL', value: formatFecha(s.fechaBtl) },
+    { label: 'Hora de inicio', value: s.horaDeInicio },
+    { label: 'Permiso', value: s.permisoConfirmado },
+    { label: 'Medidas', value: s.medidasDelEspacio },
+    { label: 'Servicios', value: (s.serviciosActuales || []).join(', '), wide: true },
+    { label: 'Otro servicio', value: s.otroServicio, wide: true },
+    { label: 'Materiales', value: (s.materialesRequeridos || []).join(', '), wide: true },
+    {
+      label: 'Promocionales',
+      value: (s.entregaDePromocionales || []).join(', '),
+      wide: true,
+    },
+    { label: 'Aportación', value: s.aportacionDelYaavser },
+    { label: 'Detalle aportación', value: s.detalleDeAportacion },
+    { label: 'Observaciones', value: s.observaciones, wide: true },
+  ])
+
+  const fotos = fileUrls(s.fotoExterior)
+  const evidencias = fileUrls(s.evidenciaDePermiso)
+  if (fotos || evidencias) {
+    section('Referencias de archivos')
+    drawFields([
+      { label: 'Fotos exterior', value: fotos || undefined, wide: true },
+      { label: 'Evidencia de permiso', value: evidencias || undefined, wide: true },
+    ])
+  }
+
+  const pages = doc.getNumberOfPages()
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i)
+    doc.setDrawColor(220, 230, 238)
+    doc.line(margin, pageH - 32, pageW - margin, pageH - 32)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(muted.r, muted.g, muted.b)
+    doc.text('Portal BTL 2026 · Documento generado automáticamente', margin, pageH - 18)
+    doc.text(`${i} / ${pages}`, pageW - margin, pageH - 18, { align: 'right' })
+  }
 
   const name = (s.claveYaavser || s.nombreYaavser || s.id).replace(/\s+/g, '-')
   doc.save(`solicitud-${name}.pdf`)
@@ -229,15 +350,4 @@ export async function downloadFileAsset(file: FileAsset, fallbackName: string) {
   } catch {
     window.open(file.url, '_blank', 'noopener,noreferrer')
   }
-}
-
-export function formatFecha(iso?: string): string {
-  if (!iso) return '—'
-  const d = new Date(iso.includes('T') ? iso : `${iso}T12:00:00`)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleDateString('es-MX', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
 }

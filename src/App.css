@@ -163,9 +163,9 @@ a {
   margin: 0.15rem 0 0;
   font-family: 'Space Grotesk', Outfit, sans-serif;
   font-weight: 700;
-  font-size: clamp(2.4rem, 6vw, 3.6rem);
-  letter-spacing: -0.045em;
-  line-height: 0.95;
+  font-size: clamp(1.55rem, 3.5vw, 2.15rem);
+  letter-spacing: -0.035em;
+  line-height: 1.05;
   text-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
 }
 
@@ -625,43 +625,190 @@ a {
 }
 
 .modal {
-  width: min(640px, 100%);
-  max-height: min(88vh, 900px);
+  width: min(720px, 100%);
+  max-height: min(90vh, 940px);
   overflow: auto;
-  background:
-    linear-gradient(180deg, #fbfcfe 0%, #f2f7fa 100%);
-  padding: 1.25rem 1.25rem 1.5rem;
-  border-radius: 22px;
+  background: #f4f8fb;
+  border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.55);
-  box-shadow: 0 30px 80px rgba(0, 16, 32, 0.35);
-  animation: modal-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 36px 90px rgba(0, 16, 32, 0.4);
+  animation: modal-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  padding: 0;
 }
 
-.modal-head {
+.modal-hero {
+  position: relative;
+  min-height: 220px;
+  background: linear-gradient(145deg, #01324a, #00506f);
+  overflow: hidden;
+}
+
+.modal-hero img {
+  width: 100%;
+  height: 240px;
+  object-fit: cover;
+  display: block;
+}
+
+.modal-hero-empty {
+  height: 200px;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 600;
+}
+
+.modal-hero-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(2, 18, 30, 0.15), rgba(2, 18, 30, 0.78));
+  pointer-events: none;
+}
+
+.modal-hero-top {
+  position: absolute;
+  top: 0.85rem;
+  left: 0.85rem;
+  right: 0.85rem;
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  align-items: start;
-  padding-bottom: 0.9rem;
-  border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: 0;
-  background: linear-gradient(180deg, #fbfcfe 70%, rgba(251, 252, 254, 0.85));
+  align-items: center;
   z-index: 2;
 }
 
-.modal-head h2 {
+.modal-close {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  font-size: 0.95rem;
+}
+
+.modal-hero-copy {
+  position: absolute;
+  left: 1.1rem;
+  right: 1.1rem;
+  bottom: 1rem;
+  z-index: 2;
+  color: #fff;
+}
+
+.modal-hero-copy h2 {
   margin: 0.2rem 0 0;
   font-family: 'Space Grotesk', Outfit, sans-serif;
-  font-size: clamp(1.15rem, 2.5vw, 1.4rem);
+  font-size: clamp(1.25rem, 3vw, 1.7rem);
   letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.modal-hero-copy p {
+  margin: 0.35rem 0 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.9rem;
+}
+
+.modal-body {
+  padding: 1.1rem 1.15rem 1.4rem;
 }
 
 .modal-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: 1rem 0;
+  margin: 0 0 0.9rem;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.95rem;
+}
+
+.chip {
+  padding: 0.32rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(0, 43, 68, 0.07);
+  color: var(--navy);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.modal-photo-action {
+  margin-bottom: 0.85rem;
+}
+
+.fact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem 0.85rem;
+}
+
+.fact {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  background: rgba(243, 248, 252, 0.95);
+  border: 1px solid rgba(7, 24, 36, 0.05);
+}
+
+.fact-wide {
+  grid-column: 1 / -1;
+}
+
+.fact span {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.fact strong {
+  font-size: 0.92rem;
+  font-weight: 650;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.maps-link {
+  margin: 0.75rem 0 0;
+}
+
+.maps-link a {
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.maps-link a:hover {
+  text-decoration: underline;
+}
+
+.thumbs-row {
+  grid-template-columns: 1fr 1fr;
+}
+
+.panel {
+  margin-top: 0.85rem;
+  padding: 0.9rem 0.95rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(7, 24, 36, 0.06);
+  box-shadow: 0 8px 24px rgba(7, 40, 60, 0.04);
+}
+
+.panel h3 {
+  margin: 0 0 0.7rem;
+  font-family: 'Space Grotesk', Outfit, sans-serif;
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
+  color: var(--navy);
 }
 
 .panel {
@@ -841,7 +988,15 @@ a {
   }
 
   .brand-title {
-    font-size: 2.35rem;
+    font-size: 1.55rem;
+  }
+
+  .fact-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .thumbs-row {
+    grid-template-columns: 1fr;
   }
 
   .toolbar {

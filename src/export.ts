@@ -30,6 +30,8 @@ const COLUMNS: { key: keyof Solicitud | 'fotos' | 'evidencias'; label: string }[
 function cellValue(s: Solicitud, key: (typeof COLUMNS)[number]['key']): string {
   if (key === 'fotos') return fileUrls(s.fotoExterior)
   if (key === 'evidencias') return fileUrls(s.evidenciaDePermiso)
+  if (key === 'horaDeInicio') return formatHora(s.horaDeInicio)
+  if (key === 'fechaBtl') return formatFecha(s.fechaBtl)
   const v = s[key as keyof Solicitud]
   if (Array.isArray(v)) {
     if (v.length && typeof v[0] === 'object') return fileUrls(v as FileAsset[])
@@ -176,13 +178,89 @@ export function formatFecha(iso?: string): string {
   })
 }
 
+/** Convierte horas raras (Excel / segundos / 1200) a texto legible, ej. 12:00 p.m. */
+export function formatHora(raw?: string | number | null): string {
+  if (raw == null || raw === '') return '—'
+  const text = String(raw).trim()
+  if (!text || text === '—' || text.toLowerCase() === 'null') return '—'
+
+  // Ya viene como hora legible
+  const ampm = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?$/i)
+  if (ampm) {
+    let h = Number(ampm[1])
+    const m = Number(ampm[2])
+    const suffix = (ampm[4] || '').toLowerCase()
+    if (suffix) {
+      const isPm = suffix.startsWith('p')
+      if (isPm && h < 12) h += 12
+      if (!isPm && h === 12) h = 0
+    }
+    return formatClock(h, m)
+  }
+
+  // Solo número
+  const normalized = text.replace(',', '.')
+  const num = Number(normalized)
+  if (!Number.isFinite(num)) return text
+
+  // 0 suele venir vacío / sin captura
+  if (num === 0) return '—'
+
+  let totalSeconds: number | null = null
+
+  // Fracción de día Excel (0–1), ej. 0.5 = 12:00
+  if (num >= 0 && num < 1) {
+    totalSeconds = Math.round(num * 86400)
+  }
+  // Horas decimales 1–24, ej. 12.5 = 12:30
+  else if (num >= 1 && num <= 24) {
+    const h = Math.floor(num)
+    const m = Math.round((num - h) * 60)
+    return formatClock(h, m >= 60 ? 59 : m)
+  }
+  // Militar compacto 700–2359, ej. 1200 = 12:00
+  else if (num >= 100 && num <= 2359 && Number.isInteger(num)) {
+    const h = Math.floor(num / 100)
+    const m = num % 100
+    if (h <= 23 && m <= 59) return formatClock(h, m)
+  }
+  // Segundos desde medianoche (lo más común cuando sale 42200 ≈ 11:43)
+  else if (num > 24 && num <= 86400) {
+    totalSeconds = Math.round(num)
+  }
+  // Serial Excel con hora en la parte decimal
+  else if (num > 20000 && num < 100000) {
+    const fraction = num - Math.floor(num)
+    if (fraction > 0) totalSeconds = Math.round(fraction * 86400)
+    else if (num <= 86400) totalSeconds = Math.round(num)
+    else {
+      // Entero tipo 42200: casi siempre segundos mal exportados
+      totalSeconds = Math.round(num % 86400)
+    }
+  }
+
+  if (totalSeconds == null) return text
+  totalSeconds = ((totalSeconds % 86400) + 86400) % 86400
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  return formatClock(h, m)
+}
+
+function formatClock(hours24: number, minutes: number): string {
+  const h = ((hours24 % 24) + 24) % 24
+  const m = Math.min(59, Math.max(0, minutes))
+  const suffix = h >= 12 ? 'p.m.' : 'a.m.'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(m).padStart(2, '0')} ${suffix}`
+}
+
 export function solicitudToPlainText(s: Solicitud): string {
   const lines: string[] = [
     'SOLICITUD BTL 2026',
     '========================',
     `ID: ${s.id}`,
     `Fecha BTL: ${formatFecha(s.fechaBtl)}`,
-    `Hora de inicio: ${s.horaDeInicio || '—'}`,
+    `Hora de inicio: ${formatHora(s.horaDeInicio)}`,
     '',
     '— YAAVSER —',
     `Ejecutivo: ${s.ejecutivoDeVentas || '—'}`,
@@ -423,7 +501,7 @@ export async function downloadSolicitudPdf(s: Solicitud) {
   section('Evento BTL')
   drawFields([
     { label: 'Fecha BTL', value: formatFecha(s.fechaBtl) },
-    { label: 'Hora de inicio', value: s.horaDeInicio },
+    { label: 'Hora de inicio', value: formatHora(s.horaDeInicio) },
     { label: 'Permiso', value: s.permisoConfirmado },
     { label: 'Medidas', value: s.medidasDelEspacio },
     { label: 'Servicios', value: (s.serviciosActuales || []).join(', '), wide: true },

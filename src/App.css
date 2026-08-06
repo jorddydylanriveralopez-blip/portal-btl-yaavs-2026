@@ -917,8 +917,76 @@ a {
   line-height: 1.3;
 }
 
-.maps-link {
-  margin: 0.75rem 0 0;
+.address-edit-trigger {
+  margin-top: 0.85rem;
+}
+
+.password-box,
+.address-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.password-box p,
+.address-form label span {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.password-box input,
+.address-form input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(7, 24, 36, 0.12);
+  border-radius: 12px;
+  padding: 0.55rem 0.8rem;
+  background: #fff;
+  color: var(--ink);
+}
+
+.password-box input:focus,
+.address-form input:focus {
+  outline: none;
+  border-color: rgba(0, 160, 200, 0.55);
+  box-shadow: 0 0 0 3px rgba(0, 160, 200, 0.16);
+}
+
+.password-error {
+  color: #a11f3d !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: 0.85rem !important;
+}
+
+.password-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.address-form {
+  grid-template-columns: 1fr 1fr;
+}
+
+.address-form label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.address-form label.wide,
+.address-form .password-actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 720px) {
+  .address-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 .maps-link a {

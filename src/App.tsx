@@ -7,7 +7,16 @@ import {
   downloadSolicitud,
   downloadSolicitudPdf,
   formatFecha,
+  formatHora,
 } from './export'
+import {
+  ADDRESS_EDIT_PASSWORD,
+  applyAddressOverride,
+  applyAddressOverrides,
+  getAddressOverride,
+  saveAddressOverride,
+  type AddressOverride,
+} from './overrides'
 import type { Filters, Solicitud } from './types'
 import './App.css'
 
@@ -41,15 +50,25 @@ function flujoClass(flujo?: string) {
 export default function App() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const debounced = useDebounced(filters, 350)
-  const [records, setRecords] = useState<Solicitud[]>([])
+  const [rawRecords, setRawRecords] = useState<Solicitud[]>([])
+  const [overrideTick, setOverrideTick] = useState(0)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Solicitud | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [sort, setSort] = useState<SortKey>('fecha-desc')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+
+  const records = useMemo(
+    () => applyAddressOverrides(rawRecords),
+    [rawRecords, overrideTick],
+  )
+  const selected = useMemo(
+    () => (selectedId ? records.find((r) => r.id === selectedId) || null : null),
+    [records, selectedId],
+  )
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -61,11 +80,11 @@ export default function App() {
     setError(null)
     try {
       const data = await getSolicitudes(f)
-      setRecords(data.records || [])
+      setRawRecords(data.records || [])
       setTotal(data.total ?? data.records?.length ?? 0)
       setUpdatedAt(new Date())
     } catch (e) {
-      setRecords([])
+      setRawRecords([])
       setTotal(0)
       setError(e instanceof Error ? e.message : 'No se pudieron cargar las solicitudes')
     } finally {
@@ -345,7 +364,7 @@ export default function App() {
                 <button
                   type="button"
                   className="item-hit"
-                  onClick={() => setSelected(s)}
+                  onClick={() => setSelectedId(s.id)}
                 >
                   <div className="item-media">
                     {s.fotoExterior?.[0]?.url ? (
@@ -409,8 +428,9 @@ export default function App() {
       {selected && (
         <Detail
           solicitud={selected}
-          onClose={() => setSelected(null)}
+          onClose={() => setSelectedId(null)}
           onToast={showToast}
+          onAddressSaved={() => setOverrideTick((n) => n + 1)}
         />
       )}
 
@@ -427,15 +447,38 @@ function Detail({
   solicitud: s,
   onClose,
   onToast,
+  onAddressSaved,
 }: {
   solicitud: Solicitud
   onClose: () => void
   onToast: (msg: string) => void
+  onAddressSaved: () => void
 }) {
   const [lightbox, setLightbox] = useState<number | null>(null)
+  const [editingAddress, setEditingAddress] = useState(false)
+  const [password, setPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [askPassword, setAskPassword] = useState(false)
+  const [draft, setDraft] = useState<AddressOverride>({})
+
   const fotos = s.fotoExterior || []
   const evidencias = s.evidenciaDePermiso || []
   const gallery = [...fotos, ...evidencias]
+
+  useEffect(() => {
+    setEditingAddress(false)
+    setAskPassword(false)
+    setPassword('')
+    setPasswordError('')
+    const o = getAddressOverride(s.id)
+    setDraft({
+      puntoDeVenta: o.puntoDeVenta ?? s.puntoDeVenta ?? '',
+      estado: o.estado ?? s.estado ?? '',
+      municipioAlcaldia: o.municipioAlcaldia ?? s.municipioAlcaldia ?? '',
+      ubicacionGoogleMaps: o.ubicacionGoogleMaps ?? s.ubicacionGoogleMaps ?? '',
+      tipoDeZona: o.tipoDeZona ?? s.tipoDeZona ?? '',
+    })
+  }, [s])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -462,6 +505,25 @@ function Detail({
     }
   }
 
+  const unlockEdit = () => {
+    if (password === ADDRESS_EDIT_PASSWORD) {
+      setAskPassword(false)
+      setEditingAddress(true)
+      setPassword('')
+      setPasswordError('')
+      onToast('Edición desbloqueada')
+    } else {
+      setPasswordError('Contraseña incorrecta')
+    }
+  }
+
+  const saveAddress = () => {
+    saveAddressOverride(s.id, draft)
+    onAddressSaved()
+    setEditingAddress(false)
+    onToast('Dirección actualizada')
+  }
+
   const downloadAllImages = async () => {
     if (!gallery.length) return
     for (const [idx, f] of gallery.entries()) {
@@ -469,6 +531,8 @@ function Detail({
     }
     onToast(gallery.length > 1 ? `${gallery.length} imágenes descargadas` : 'Imagen descargada')
   }
+
+  const display = applyAddressOverride(s)
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
@@ -503,10 +567,10 @@ function Detail({
           </div>
           <div className="modal-hero-copy">
             <p className="eyebrow">Solicitud BTL</p>
-            <h2>{s.puntoDeVenta || s.nombreYaavser}</h2>
+            <h2>{display.puntoDeVenta || display.nombreYaavser}</h2>
             <p>
-              {formatFecha(s.fechaBtl)}
-              {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
+              {formatFecha(display.fechaBtl)}
+              {display.claveYaavser ? ` · ${display.claveYaavser}` : ''}
             </p>
           </div>
         </div>
@@ -552,9 +616,11 @@ function Detail({
           </div>
 
           <div className="chip-row">
-            {s.estado && <span className="chip">{s.estado}</span>}
-            {s.municipioAlcaldia && <span className="chip">{s.municipioAlcaldia}</span>}
-            {s.tipoDeZona && <span className="chip">{s.tipoDeZona}</span>}
+            {display.estado && <span className="chip">{display.estado}</span>}
+            {display.municipioAlcaldia && (
+              <span className="chip">{display.municipioAlcaldia}</span>
+            )}
+            {display.tipoDeZona && <span className="chip">{display.tipoDeZona}</span>}
             {s.permisoConfirmado && <span className="chip">{s.permisoConfirmado}</span>}
           </div>
 
@@ -606,30 +672,139 @@ function Detail({
               <Fact label="Nombre" value={s.nombreYaavser} />
               <Fact label="Clave" value={s.claveYaavser} />
               <Fact label="Teléfono" value={s.telefonoDeContacto} />
-              <Fact label="Punto de venta" value={s.puntoDeVenta} wide />
+              <Fact label="Punto de venta" value={display.puntoDeVenta} wide />
             </div>
           </Section>
 
           <Section title="Ubicación">
-            <div className="fact-grid">
-              <Fact label="Estado" value={s.estado} />
-              <Fact label="Municipio / Alcaldía" value={s.municipioAlcaldia} />
-              <Fact label="Tipo de zona" value={s.tipoDeZona} />
-              <Fact label="Flujo" value={s.flujoDePersonas} />
-            </div>
-            {s.ubicacionGoogleMaps && (
-              <p className="maps-link">
-                <a href={s.ubicacionGoogleMaps} target="_blank" rel="noreferrer">
-                  Abrir en Google Maps →
-                </a>
-              </p>
+            {!editingAddress && !askPassword && (
+              <>
+                <div className="fact-grid">
+                  <Fact label="Estado" value={display.estado} />
+                  <Fact label="Municipio / Alcaldía" value={display.municipioAlcaldia} />
+                  <Fact label="Tipo de zona" value={display.tipoDeZona} />
+                  <Fact label="Flujo" value={s.flujoDePersonas} />
+                </div>
+                {display.ubicacionGoogleMaps && (
+                  <p className="maps-link">
+                    <a href={display.ubicacionGoogleMaps} target="_blank" rel="noreferrer">
+                      Abrir en Google Maps →
+                    </a>
+                  </p>
+                )}
+                <div className="address-edit-trigger">
+                  <button
+                    type="button"
+                    className="btn btn-soft"
+                    onClick={() => {
+                      setAskPassword(true)
+                      setPassword('')
+                      setPasswordError('')
+                    }}
+                  >
+                    Editar dirección
+                  </button>
+                </div>
+              </>
+            )}
+
+            {askPassword && !editingAddress && (
+              <div className="password-box">
+                <p>Ingresa la contraseña para editar la dirección</p>
+                <input
+                  type="password"
+                  value={password}
+                  placeholder="Contraseña"
+                  autoFocus
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') unlockEdit()
+                  }}
+                />
+                {passwordError && <p className="password-error">{passwordError}</p>}
+                <div className="password-actions">
+                  <button type="button" className="btn btn-solid dark" onClick={unlockEdit}>
+                    Desbloquear
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-text"
+                    onClick={() => {
+                      setAskPassword(false)
+                      setPassword('')
+                      setPasswordError('')
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {editingAddress && (
+              <div className="address-form">
+                <label>
+                  <span>Punto de venta</span>
+                  <input
+                    value={draft.puntoDeVenta || ''}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, puntoDeVenta: e.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Estado</span>
+                  <input
+                    value={draft.estado || ''}
+                    onChange={(e) => setDraft((d) => ({ ...d, estado: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Municipio / Alcaldía</span>
+                  <input
+                    value={draft.municipioAlcaldia || ''}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, municipioAlcaldia: e.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Tipo de zona</span>
+                  <input
+                    value={draft.tipoDeZona || ''}
+                    onChange={(e) => setDraft((d) => ({ ...d, tipoDeZona: e.target.value }))}
+                  />
+                </label>
+                <label className="wide">
+                  <span>Google Maps (URL)</span>
+                  <input
+                    value={draft.ubicacionGoogleMaps || ''}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, ubicacionGoogleMaps: e.target.value }))
+                    }
+                    placeholder="https://maps.google.com/..."
+                  />
+                </label>
+                <div className="password-actions">
+                  <button type="button" className="btn btn-solid dark" onClick={saveAddress}>
+                    Guardar dirección
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-text"
+                    onClick={() => setEditingAddress(false)}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
             )}
           </Section>
 
           <Section title="Evento BTL">
             <div className="fact-grid">
               <Fact label="Fecha" value={formatFecha(s.fechaBtl)} />
-              <Fact label="Hora de inicio" value={s.horaDeInicio} />
+              <Fact label="Hora de inicio" value={formatHora(s.horaDeInicio)} />
               <Fact label="Permiso" value={s.permisoConfirmado} />
               <Fact label="Medidas" value={s.medidasDelEspacio} />
               <Fact

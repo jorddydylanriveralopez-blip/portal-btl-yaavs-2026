@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { getSolicitudes } from './api'
 import {
   downloadCsv,
@@ -17,6 +17,12 @@ import {
   saveAddressOverride,
   type AddressOverride,
 } from './overrides'
+import { deleteSolicitud, fetchDeletedIds, filterDeleted } from './deleted'
+import {
+  buildFormularioUrl,
+  checkClaveYaavser,
+  normalizeClave,
+} from './clave'
 import type { Filters, Solicitud } from './types'
 import './App.css'
 
@@ -72,7 +78,6 @@ export default function App() {
   const debounced = useDebounced(filters, 350)
   const [rawRecords, setRawRecords] = useState<Solicitud[]>([])
   const [overrideTick, setOverrideTick] = useState(0)
-  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -81,10 +86,13 @@ export default function App() {
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [newRequestOpen, setNewRequestOpen] = useState(false)
+  const [deletedIds, setDeletedIds] = useState<string[]>([])
+  const [pendingDelete, setPendingDelete] = useState<Solicitud | null>(null)
 
   const records = useMemo(
-    () => applyAddressOverrides(rawRecords),
-    [rawRecords, overrideTick],
+    () => filterDeleted(applyAddressOverrides(rawRecords), deletedIds),
+    [rawRecords, overrideTick, deletedIds],
   )
   const selected = useMemo(
     () => (selectedId ? records.find((r) => r.id === selectedId) || null : null),
@@ -102,11 +110,9 @@ export default function App() {
     try {
       const data = await getSolicitudes(f)
       setRawRecords(data.records || [])
-      setTotal(data.total ?? data.records?.length ?? 0)
       setUpdatedAt(new Date())
     } catch (e) {
       setRawRecords([])
-      setTotal(0)
       setError(e instanceof Error ? e.message : 'No se pudieron cargar las solicitudes')
     } finally {
       setLoading(false)
@@ -118,8 +124,13 @@ export default function App() {
   }, [debounced, load])
 
   useEffect(() => {
+    void fetchDeletedIds().then(setDeletedIds)
+  }, [])
+
+  useEffect(() => {
     const id = window.setInterval(() => {
       void load(filters)
+      void fetchDeletedIds().then(setDeletedIds)
     }, 60_000)
     return () => window.clearInterval(id)
   }, [filters, load])
@@ -216,9 +227,16 @@ export default function App() {
           <div className="masthead-actions">
             <div className="live-chip" aria-live="polite">
               <span className="live-dot" />
-              <strong>{total}</strong>
+              <strong>{records.length}</strong>
               <span>en vivo</span>
             </div>
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => setNewRequestOpen(true)}
+            >
+              Nueva solicitud
+            </button>
             <button
               type="button"
               className="btn btn-quiet"
@@ -419,6 +437,7 @@ export default function App() {
                     view={view}
                     onOpen={() => setSelectedId(s.id)}
                     onToast={showToast}
+                    onRequestDelete={() => setPendingDelete(s)}
                   />
                 ))}
               </ul>
@@ -440,6 +459,7 @@ export default function App() {
                     view={view}
                     onOpen={() => setSelectedId(s.id)}
                     onToast={showToast}
+                    onRequestDelete={() => setPendingDelete(s)}
                   />
                 ))}
               </ul>
@@ -453,12 +473,33 @@ export default function App() {
         </footer>
       </div>
 
+      {newRequestOpen && (
+        <NewRequestGate
+          onClose={() => setNewRequestOpen(false)}
+          onToast={showToast}
+        />
+      )}
+
+      {pendingDelete && (
+        <DeleteConfirm
+          solicitud={pendingDelete}
+          onClose={() => setPendingDelete(null)}
+          onToast={showToast}
+          onDeleted={(ids) => {
+            setDeletedIds(ids)
+            if (selectedId && ids.includes(selectedId)) setSelectedId(null)
+            setPendingDelete(null)
+          }}
+        />
+      )}
+
       {selected && (
         <Detail
           solicitud={selected}
           onClose={() => setSelectedId(null)}
           onToast={showToast}
           onAddressSaved={() => setOverrideTick((n) => n + 1)}
+          onRequestDelete={() => setPendingDelete(selected)}
         />
       )}
 
@@ -471,18 +512,160 @@ export default function App() {
   )
 }
 
+function NewRequestGate({
+  onClose,
+  onToast,
+}: {
+  onClose: () => void
+  onToast: (msg: string) => void
+}) {
+  const [clave, setClave] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [existing, setExisting] = useState<{
+    puntoDeVenta?: string
+    nombreYaavser?: string
+    fechaBtl?: string
+  } | null>(null)
+
+  async function handleContinue(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setExisting(null)
+    const normalized = normalizeClave(clave)
+    if (!normalized) {
+      setError('Escribe la clave YAAVSER (ej. 25CL03213725)')
+      return
+    }
+
+    setChecking(true)
+    try {
+      const result = await checkClaveYaavser(normalized)
+      if (result.exists) {
+        setExisting(result.solicitud || null)
+        setError(
+          result.message ||
+            'Esta clave YAAVSER ya tiene una solicitud. No se puede enviar otra.',
+        )
+        return
+      }
+      if (!result.ok) {
+        setError(result.message || 'No se pudo validar la clave')
+        return
+      }
+      window.open(buildFormularioUrl(normalized), '_blank', 'noopener,noreferrer')
+      onToast('Formulario abierto. Completa la solicitud con esa clave.')
+      onClose()
+    } catch {
+      setError('Error de red al validar la clave')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={(ev) => {
+        if (ev.target === ev.currentTarget) onClose()
+      }}
+    >
+      <div
+        className="modal gate-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gate-title"
+      >
+        <div className="gate-head">
+          <div>
+            <p className="gate-eyebrow">Nueva solicitud</p>
+            <h2 id="gate-title">Valida tu clave YAAVSER</h2>
+            <p className="gate-sub">
+              Si la clave ya está registrada, no podrás abrir el formulario.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="modal-close gate-close"
+            onClick={onClose}
+            aria-label="Cerrar"
+          >
+            ×
+          </button>
+        </div>
+
+        <form className="gate-form" onSubmit={(e) => void handleContinue(e)}>
+          <label className="gate-label" htmlFor="clave-yaavser">
+            Clave YAAVSER
+          </label>
+          <input
+            id="clave-yaavser"
+            className="gate-input"
+            type="text"
+            autoFocus
+            autoComplete="off"
+            placeholder="Ej. 25CL03213725"
+            value={clave}
+            disabled={checking}
+            onChange={(e) => {
+              setClave(e.target.value)
+              setError(null)
+              setExisting(null)
+            }}
+          />
+
+          {error && (
+            <div className="gate-error" role="alert">
+              <p>{error}</p>
+              {existing && (
+                <p className="gate-existing">
+                  {existing.puntoDeVenta || existing.nombreYaavser || 'Solicitud existente'}
+                  {existing.fechaBtl
+                    ? ` · ${formatFecha(existing.fechaBtl)}`
+                    : ''}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="gate-actions">
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={onClose}
+              disabled={checking}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="btn btn-solid dark"
+              disabled={checking || !clave.trim()}
+            >
+              {checking ? 'Validando…' : 'Continuar al formulario'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function SolicitudCard({
   s,
   i,
   view,
   onOpen,
   onToast,
+  onRequestDelete,
 }: {
   s: Solicitud
   i: number
   view: 'grid' | 'list'
   onOpen: () => void
   onToast: (msg: string) => void
+  onRequestDelete: () => void
 }) {
   const done = isTerminada(s)
   return (
@@ -541,8 +724,136 @@ function SolicitudCard({
         >
           CSV
         </button>
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={onRequestDelete}
+        >
+          Eliminar
+        </button>
       </div>
     </li>
+  )
+}
+
+function DeleteConfirm({
+  solicitud: s,
+  onClose,
+  onToast,
+  onDeleted,
+}: {
+  solicitud: Solicitud
+  onClose: () => void
+  onToast: (msg: string) => void
+  onDeleted: (ids: string[]) => void
+}) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function handleDelete(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    if (password !== ADDRESS_EDIT_PASSWORD) {
+      setError('Contraseña incorrecta')
+      return
+    }
+    setBusy(true)
+    try {
+      const result = await deleteSolicitud(s.id, password)
+      if (!result.ok) {
+        setError(result.message || 'No se pudo eliminar')
+        return
+      }
+      onToast(result.message || 'Solicitud eliminada')
+      onDeleted(result.ids)
+    } catch {
+      setError('Error de red al eliminar')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={(ev) => {
+        if (ev.target === ev.currentTarget && !busy) onClose()
+      }}
+    >
+      <div
+        className="modal gate-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-title"
+      >
+        <div className="gate-head">
+          <div>
+            <p className="gate-eyebrow">Eliminar solicitud</p>
+            <h2 id="delete-title">¿Quitar del portal?</h2>
+            <p className="gate-sub">
+              {s.puntoDeVenta || s.nombreYaavser || 'Solicitud'}
+              {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="modal-close gate-close"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Cerrar"
+          >
+            ×
+          </button>
+        </div>
+
+        <form className="gate-form" onSubmit={(e) => void handleDelete(e)}>
+          <p className="gate-sub" style={{ margin: 0 }}>
+            Se oculta en el portal para todos. La clave quedará libre para una
+            nueva solicitud. Contraseña: la misma de editar dirección.
+          </p>
+          <label className="gate-label" htmlFor="delete-password">
+            Contraseña
+          </label>
+          <input
+            id="delete-password"
+            className="gate-input"
+            type="password"
+            autoFocus
+            autoComplete="current-password"
+            value={password}
+            disabled={busy}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              setError('')
+            }}
+          />
+          {error && (
+            <div className="gate-error" role="alert">
+              <p>{error}</p>
+            </div>
+          )}
+          <div className="gate-actions">
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={onClose}
+              disabled={busy}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="btn btn-danger-solid"
+              disabled={busy || !password}
+            >
+              {busy ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   )
 }
 
@@ -551,11 +862,13 @@ function Detail({
   onClose,
   onToast,
   onAddressSaved,
+  onRequestDelete,
 }: {
   solicitud: Solicitud
   onClose: () => void
   onToast: (msg: string) => void
   onAddressSaved: () => void
+  onRequestDelete: () => void
 }) {
   const [lightbox, setLightbox] = useState<number | null>(null)
   const [editingAddress, setEditingAddress] = useState(false)
@@ -718,6 +1031,13 @@ function Detail({
               onClick={() => void copy(s.telefonoDeContacto, 'Teléfono copiado')}
             >
               Copiar tel.
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={onRequestDelete}
+            >
+              Eliminar
             </button>
           </div>
 

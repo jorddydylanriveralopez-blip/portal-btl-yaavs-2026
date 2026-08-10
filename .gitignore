@@ -3,6 +3,8 @@ dist
 dist-ssr
 *.local
 .netlify
+public/deleted-solicitudes.json
+dist/deleted-solicitudes.json
 
 # Editor directories and files
 .vscode/*

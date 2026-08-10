@@ -688,6 +688,25 @@ a {
   font-size: 0.82rem;
 }
 
+.btn-danger {
+  background: transparent;
+  color: #9b2430;
+  border: 1px solid rgba(155, 36, 48, 0.28);
+  padding: 0.42rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(155, 36, 48, 0.08);
+}
+
+.btn-danger-solid {
+  background: #9b2430;
+  color: #fff;
+  border: 1px solid #9b2430;
+  box-shadow: 0 10px 22px rgba(155, 36, 48, 0.22);
+}
+
 .btn-text {
   background: transparent;
   color: var(--navy);
@@ -727,6 +746,118 @@ a {
   place-items: center;
   padding: 1rem;
   animation: fade 0.2s ease;
+}
+
+.gate-modal {
+  width: min(440px, 100%);
+  max-height: none;
+  overflow: visible;
+  background: #fff;
+  border-radius: 18px;
+  padding: 1.35rem 1.35rem 1.25rem;
+  box-shadow: 0 28px 60px rgba(0, 20, 40, 0.28);
+}
+
+.gate-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1.15rem;
+}
+
+.gate-eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cyan-2);
+  font-weight: 700;
+}
+
+.gate-head h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  color: var(--navy);
+  line-height: 1.2;
+}
+
+.gate-sub {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.gate-close {
+  position: static;
+  flex-shrink: 0;
+  background: rgba(0, 43, 68, 0.06);
+  color: var(--navy);
+}
+
+.gate-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.gate-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--navy);
+  letter-spacing: 0.02em;
+}
+
+.gate-input {
+  width: 100%;
+  border: 1px solid rgba(0, 43, 68, 0.16);
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+  font-size: 1rem;
+  font-family: inherit;
+  color: var(--navy);
+  background: #f7fafc;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.gate-input:focus {
+  border-color: var(--cyan-2);
+  box-shadow: 0 0 0 3px rgba(0, 170, 200, 0.18);
+  background: #fff;
+}
+
+.gate-error {
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  background: rgba(180, 40, 50, 0.08);
+  border: 1px solid rgba(180, 40, 50, 0.22);
+  color: #8a1f2a;
+}
+
+.gate-error p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.gate-existing {
+  margin-top: 0.4rem !important;
+  font-size: 0.82rem !important;
+  opacity: 0.88;
+}
+
+.gate-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+}
+
+.gate-actions .btn-quiet {
+  background: rgba(0, 43, 68, 0.06);
+  color: var(--navy);
+  border-color: rgba(0, 43, 68, 0.12);
 }
 
 .modal {

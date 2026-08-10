@@ -1,68 +1,269 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 
-function imageProxyPlugin(): Plugin {
+const rootDir = path.dirname(fileURLToPath(import.meta.url))
+const DELETED_STORE = path.join(rootDir, 'public', 'deleted-solicitudes.json')
+const DELETE_PASSWORD = 'orlando01'
+
+type ConnectNext = () => void
+
+function normalizeClave(raw: string): string {
+  const t = raw.trim().toUpperCase().replace(/\s+/g, ' ')
+  const code = t.match(/([0-9]{2}CL[A-Z0-9]+)/)
+  if (code) return code[1]
+  const beforeDash = t.split(/\s+-\s+/)[0]?.trim() || t
+  return beforeDash.split(/\s{2,}/)[0]?.trim() || beforeDash
+}
+
+function readDeletedIds(): string[] {
+  try {
+    if (!fs.existsSync(DELETED_STORE)) return []
+    const raw = fs.readFileSync(DELETED_STORE, 'utf8')
+    const data = JSON.parse(raw) as { ids?: unknown }
+    if (!Array.isArray(data.ids)) return []
+    return data.ids.filter((id): id is string => typeof id === 'string' && id !== '')
+  } catch {
+    return []
+  }
+}
+
+function writeDeletedIds(ids: string[]) {
+  const unique = [...new Set(ids)]
+  fs.writeFileSync(
+    DELETED_STORE,
+    `${JSON.stringify({ ids: unique, updatedAt: new Date().toISOString() }, null, 2)}\n`,
+    'utf8',
+  )
+  return unique
+}
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)))
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown) {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.end(JSON.stringify(body))
+}
+
+function localApiPlugin(): Plugin {
   const handler = async (
-    req: { url?: string },
-    res: {
-      statusCode: number
-      setHeader: (k: string, v: string) => void
-      end: (b?: string | Buffer) => void
-    },
-    next: () => void,
+    req: IncomingMessage,
+    res: ServerResponse,
+    next: ConnectNext,
   ) => {
     const rawUrl = req.url || ''
-    if (!rawUrl.startsWith('/image-proxy.php')) return next()
 
-    try {
-      const parsed = new URL(rawUrl, 'http://localhost')
-      const target = parsed.searchParams.get('url')
-      if (!target) {
-        res.statusCode = 400
-        res.end('URL inválida')
-        return
-      }
+    if (rawUrl.startsWith('/image-proxy.php')) {
+      try {
+        const parsed = new URL(rawUrl, 'http://localhost')
+        const target = parsed.searchParams.get('url')
+        if (!target) {
+          res.statusCode = 400
+          res.end('URL inválida')
+          return
+        }
 
-      const host = new URL(target).hostname.toLowerCase()
-      const allowed =
-        host.endsWith('.amazonaws.com') ||
-        host.endsWith('.fillout.com') ||
-        host.endsWith('.zite.com') ||
-        host === 'fillout.com' ||
-        host === 'zite.com' ||
-        host === 'images.fillout.com'
+        const host = new URL(target).hostname.toLowerCase()
+        const allowed =
+          host.endsWith('.amazonaws.com') ||
+          host.endsWith('.fillout.com') ||
+          host.endsWith('.zite.com') ||
+          host === 'fillout.com' ||
+          host === 'zite.com' ||
+          host === 'images.fillout.com'
 
-      if (!allowed) {
-        res.statusCode = 403
-        res.end('Host no permitido')
-        return
-      }
+        if (!allowed) {
+          res.statusCode = 403
+          res.end('Host no permitido')
+          return
+        }
 
-      const upstream = await fetch(target, {
-        headers: { Accept: 'image/*' },
-      })
-      if (!upstream.ok) {
+        const upstream = await fetch(target, {
+          headers: { Accept: 'image/*' },
+        })
+        if (!upstream.ok) {
+          res.statusCode = 502
+          res.end('No se pudo obtener la imagen')
+          return
+        }
+
+        const buf = Buffer.from(await upstream.arrayBuffer())
+        res.setHeader(
+          'Content-Type',
+          upstream.headers.get('content-type') || 'image/jpeg',
+        )
+        res.setHeader('Cache-Control', 'public, max-age=86400')
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.end(buf)
+      } catch {
         res.statusCode = 502
-        res.end('No se pudo obtener la imagen')
+        res.end('Error de proxy')
+      }
+      return
+    }
+
+    if (rawUrl.startsWith('/delete-solicitud.php')) {
+      if (req.method === 'OPTIONS') {
+        res.statusCode = 204
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept')
+        res.end()
         return
       }
 
-      const buf = Buffer.from(await upstream.arrayBuffer())
-      res.setHeader(
-        'Content-Type',
-        upstream.headers.get('content-type') || 'image/jpeg',
-      )
-      res.setHeader('Cache-Control', 'public, max-age=86400')
-      res.setHeader('Access-Control-Allow-Origin', '*')
-      res.end(buf)
-    } catch {
-      res.statusCode = 502
-      res.end('Error de proxy')
+      if (req.method === 'GET') {
+        sendJson(res, 200, { ok: true, ids: readDeletedIds() })
+        return
+      }
+
+      if (req.method === 'POST') {
+        try {
+          const raw = await readBody(req)
+          const body = JSON.parse(raw || '{}') as {
+            id?: string
+            password?: string
+            action?: string
+          }
+          if (body.password !== DELETE_PASSWORD) {
+            sendJson(res, 403, { ok: false, message: 'Contraseña incorrecta', ids: [] })
+            return
+          }
+          const id = (body.id || '').trim()
+          if (!id) {
+            sendJson(res, 400, { ok: false, message: 'Falta el id de la solicitud', ids: [] })
+            return
+          }
+          let ids = readDeletedIds()
+          const action = (body.action || 'delete').toLowerCase()
+          if (action === 'restore') {
+            ids = ids.filter((x) => x !== id)
+            ids = writeDeletedIds(ids)
+            sendJson(res, 200, { ok: true, ids, message: 'Solicitud restaurada' })
+          } else {
+            if (!ids.includes(id)) ids.push(id)
+            ids = writeDeletedIds(ids)
+            sendJson(res, 200, {
+              ok: true,
+              ids,
+              message: 'Solicitud eliminada del portal',
+            })
+          }
+        } catch {
+          sendJson(res, 500, { ok: false, message: 'Error al eliminar', ids: [] })
+        }
+        return
+      }
+
+      sendJson(res, 405, { ok: false, message: 'Método no permitido' })
+      return
     }
+
+    if (rawUrl.startsWith('/check-clave.php')) {
+      try {
+        const parsed = new URL(rawUrl, 'http://localhost')
+        const clave = normalizeClave(parsed.searchParams.get('clave') || '')
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.setHeader('Access-Control-Allow-Origin', '*')
+
+        if (!clave) {
+          res.statusCode = 400
+          res.end(
+            JSON.stringify({
+              ok: false,
+              exists: false,
+              message: 'Falta la clave YAAVSER',
+            }),
+          )
+          return
+        }
+
+        const deleted = new Set(readDeletedIds())
+        const upstream = await fetch(
+          'https://workflows.fillout.com/public/sy3akaxkpf/workflow/execute',
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json;charset=UTF-8' },
+            body: JSON.stringify({
+              inputs: { limit: 500 },
+              mode: 'live',
+              workflowId: 'getSolicitudes',
+              stream: false,
+            }),
+          },
+        )
+        if (!upstream.ok) {
+          res.statusCode = 502
+          res.end(
+            JSON.stringify({
+              ok: false,
+              exists: false,
+              message: 'No se pudo consultar solicitudes',
+            }),
+          )
+          return
+        }
+
+        const data = (await upstream.json()) as {
+          records?: Array<Record<string, unknown>>
+        }
+        const match = (data.records || []).find((row) => {
+          const id = String(row.id || '')
+          if (id && deleted.has(id)) return false
+          const existing = normalizeClave(String(row.claveYaavser || ''))
+          return existing !== '' && existing === clave
+        })
+
+        res.statusCode = 200
+        res.end(
+          JSON.stringify({
+            ok: true,
+            exists: !!match,
+            clave,
+            message: match
+              ? 'Esta clave YAAVSER ya tiene una solicitud registrada. No se puede enviar otra.'
+              : 'Clave disponible',
+            solicitud: match
+              ? {
+                  id: match.id,
+                  puntoDeVenta: match.puntoDeVenta,
+                  nombreYaavser: match.nombreYaavser,
+                  fechaBtl: match.fechaBtl,
+                }
+              : null,
+          }),
+        )
+      } catch {
+        res.statusCode = 502
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.end(
+          JSON.stringify({
+            ok: false,
+            exists: false,
+            message: 'Error al validar la clave',
+          }),
+        )
+      }
+      return
+    }
+
+    next()
   }
 
   return {
-    name: 'image-proxy',
+    name: 'local-api',
     configureServer(server) {
       server.middlewares.use(handler)
     },
@@ -72,9 +273,8 @@ function imageProxyPlugin(): Plugin {
   }
 }
 
-// base './' para que funcione en carpeta raíz o subcarpeta de Hostinger
 export default defineConfig({
-  plugins: [react(), imageProxyPlugin()],
+  plugins: [react(), localApiPlugin()],
   base: './',
   build: {
     outDir: 'dist',

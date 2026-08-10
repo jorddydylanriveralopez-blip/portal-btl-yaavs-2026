@@ -499,15 +499,83 @@ a {
 }
 
 .badge-done {
-  background: rgba(46, 125, 90, 0.92);
+  background: #6b7280;
+}
+
+.group {
+  margin-top: 1.35rem;
+}
+
+.group-done {
+  margin-top: 2rem;
+  padding-top: 1.35rem;
+  border-top: 1px dashed rgba(90, 100, 110, 0.35);
+}
+
+.group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.group-head h2 {
+  margin: 0;
+  font-family: 'Space Grotesk', Outfit, sans-serif;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  color: var(--navy);
+}
+
+.group-head span {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.group-head-done h2 {
+  color: #5a6570;
 }
 
 .item-done {
-  opacity: 0.92;
+  background: #e8ebef;
+  outline-color: rgba(90, 100, 110, 0.18);
+  box-shadow: none;
+  filter: grayscale(0.85);
+  opacity: 0.88;
+}
+
+.item-done:hover {
+  transform: none;
+  box-shadow: none;
 }
 
 .item-done .item-media img {
-  filter: grayscale(0.35);
+  filter: grayscale(1) brightness(0.95);
+}
+
+.item-done .item-body h2,
+.item-done .item-date {
+  color: #5a6570;
+}
+
+.item-done .item-line,
+.item-done .item-meta {
+  color: #7a8490;
+}
+
+.item-done .badge-done {
+  background: #6b7280;
+}
+
+.item-done .btn-soft,
+.item-done .btn-text {
+  color: #5a6570;
+  border-color: rgba(90, 100, 110, 0.2);
+  background: rgba(255, 255, 255, 0.45);
 }
 
 .item-done .item-body h2::after {
@@ -515,8 +583,8 @@ a {
 }
 
 .chip-done {
-  background: rgba(46, 125, 90, 0.14);
-  color: #1f6b4a;
+  background: rgba(107, 114, 128, 0.18);
+  color: #4b5563;
 }
 
 .chip-active {

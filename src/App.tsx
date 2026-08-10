@@ -173,6 +173,12 @@ export default function App() {
     return [...base, ...new Set(extra)]
   }, [records])
 
+  const { activasList, terminadasList } = useMemo(() => {
+    const activasList = sorted.filter((s) => !isTerminada(s))
+    const terminadasList = sorted.filter(isTerminada)
+    return { activasList, terminadasList }
+  }, [sorted])
+
   const patch = (partial: Partial<Filters>) =>
     setFilters((prev) => ({ ...prev, ...partial }))
 
@@ -396,72 +402,49 @@ export default function App() {
             </div>
           )}
 
-          <ul className={view === 'grid' ? 'board board-grid' : 'board board-list'}>
-            {sorted.map((s, i) => (
-            <li
-              key={s.id}
-              className={`item${isTerminada(s) ? ' item-done' : ''}`}
-              style={{ animationDelay: `${Math.min(i, 14) * 40}ms` }}
-            >
-              <button
-                type="button"
-                className="item-hit"
-                onClick={() => setSelectedId(s.id)}
-              >
-                <div className="item-media">
-                  {s.fotoExterior?.[0]?.url ? (
-                    <img src={s.fotoExterior[0].url} alt="" loading="lazy" />
-                  ) : (
-                    <div className="item-placeholder">Sin foto</div>
-                  )}
-                  <div className="badge-stack">
-                    {isTerminada(s) && <span className="badge badge-done">Terminada</span>}
-                    <span className={flujoClass(s.flujoDePersonas)}>
-                      {s.flujoDePersonas || '—'}
-                    </span>
-                  </div>
-                </div>
-                <div className="item-body">
-                  <h2>{s.puntoDeVenta || s.nombreYaavser || 'Sin nombre'}</h2>
-                  <p className="item-line">
-                    {s.nombreYaavser}
-                    {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
-                  </p>
-                  <p className="item-meta">
-                    {s.estado}
-                    {s.municipioAlcaldia ? ` · ${s.municipioAlcaldia}` : ''}
-                  </p>
-                  <p className="item-date">{formatFecha(s.fechaBtl)}</p>
-                  {view === 'list' && (
-                    <p className="item-meta">Ejecutivo: {s.ejecutivoDeVentas || '—'}</p>
-                  )}
-                </div>
-              </button>
-                <div className="item-actions">
-                  <button
-                    type="button"
-                    className="btn btn-soft"
-                    onClick={() => {
-                      downloadSolicitud(s)
-                      showToast('Solicitud descargada')
-                    }}
-                  >
-                    Descargar
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-text"
-                    onClick={() => {
-                      downloadCsv([s], `solicitud-${s.claveYaavser || s.id}.csv`)
-                      showToast('CSV listo')
-                    }}
-                  >
-                    CSV
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          {activasList.length > 0 && (
+            <section className="group group-active">
+              {statusFilter === 'todas' && terminadasList.length > 0 && (
+                <header className="group-head">
+                  <h2>Activas</h2>
+                  <span>{activasList.length}</span>
+                </header>
+              )}
+              <ul className={view === 'grid' ? 'board board-grid' : 'board board-list'}>
+                {activasList.map((s, i) => (
+                  <SolicitudCard
+                    key={s.id}
+                    s={s}
+                    i={i}
+                    view={view}
+                    onOpen={() => setSelectedId(s.id)}
+                    onToast={showToast}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {terminadasList.length > 0 && (
+            <section className="group group-done">
+              <header className="group-head group-head-done">
+                <h2>Terminadas</h2>
+                <span>{terminadasList.length}</span>
+              </header>
+              <ul className={view === 'grid' ? 'board board-grid' : 'board board-list'}>
+                {terminadasList.map((s, i) => (
+                  <SolicitudCard
+                    key={s.id}
+                    s={s}
+                    i={i}
+                    view={view}
+                    onOpen={() => setSelectedId(s.id)}
+                    onToast={showToast}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
         </main>
 
         <footer className="foot">
@@ -485,6 +468,81 @@ export default function App() {
         </div>
       )}
     </div>
+  )
+}
+
+function SolicitudCard({
+  s,
+  i,
+  view,
+  onOpen,
+  onToast,
+}: {
+  s: Solicitud
+  i: number
+  view: 'grid' | 'list'
+  onOpen: () => void
+  onToast: (msg: string) => void
+}) {
+  const done = isTerminada(s)
+  return (
+    <li
+      className={`item${done ? ' item-done' : ''}`}
+      style={{ animationDelay: `${Math.min(i, 14) * 40}ms` }}
+    >
+      <button type="button" className="item-hit" onClick={onOpen}>
+        <div className="item-media">
+          {s.fotoExterior?.[0]?.url ? (
+            <img src={s.fotoExterior[0].url} alt="" loading="lazy" />
+          ) : (
+            <div className="item-placeholder">Sin foto</div>
+          )}
+          <div className="badge-stack">
+            {done && <span className="badge badge-done">Terminada</span>}
+            <span className={flujoClass(s.flujoDePersonas)}>
+              {s.flujoDePersonas || '—'}
+            </span>
+          </div>
+        </div>
+        <div className="item-body">
+          <h2>{s.puntoDeVenta || s.nombreYaavser || 'Sin nombre'}</h2>
+          <p className="item-line">
+            {s.nombreYaavser}
+            {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
+          </p>
+          <p className="item-meta">
+            {s.estado}
+            {s.municipioAlcaldia ? ` · ${s.municipioAlcaldia}` : ''}
+          </p>
+          <p className="item-date">{formatFecha(s.fechaBtl)}</p>
+          {view === 'list' && (
+            <p className="item-meta">Ejecutivo: {s.ejecutivoDeVentas || '—'}</p>
+          )}
+        </div>
+      </button>
+      <div className="item-actions">
+        <button
+          type="button"
+          className="btn btn-soft"
+          onClick={() => {
+            downloadSolicitud(s)
+            onToast('Solicitud descargada')
+          }}
+        >
+          Descargar
+        </button>
+        <button
+          type="button"
+          className="btn btn-text"
+          onClick={() => {
+            downloadCsv([s], `solicitud-${s.claveYaavser || s.id}.csv`)
+            onToast('CSV listo')
+          }}
+        >
+          CSV
+        </button>
+      </div>
+    </li>
   )
 }
 

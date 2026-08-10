@@ -430,27 +430,28 @@ a {
 
 .item-remove {
   position: absolute;
-  top: 0.55rem;
-  right: 0.55rem;
-  z-index: 5;
-  width: 2rem;
-  height: 2rem;
-  border: 0;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 8;
+  width: 2.15rem;
+  height: 2.15rem;
+  border: 2px solid rgba(255, 255, 255, 0.85);
   border-radius: 999px;
-  background: rgba(8, 20, 32, 0.72);
+  background: #9b2430;
   color: #fff;
-  font-size: 1.35rem;
+  font-size: 1.45rem;
+  font-weight: 700;
   line-height: 1;
   cursor: pointer;
   display: grid;
   place-items: center;
-  backdrop-filter: blur(4px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
   transition: background 0.15s ease, transform 0.15s ease;
 }
 
 .item-remove:hover {
-  background: #9b2430;
-  transform: scale(1.06);
+  background: #7a1a24;
+  transform: scale(1.08);
 }
 
 .trash-btn {

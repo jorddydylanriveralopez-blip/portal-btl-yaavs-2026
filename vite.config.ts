@@ -19,26 +19,78 @@ function normalizeClave(raw: string): string {
   return beforeDash.split(/\s{2,}/)[0]?.trim() || beforeDash
 }
 
-function readDeletedIds(): string[] {
+type TrashItem = {
+  id: string
+  deletedAt?: string | null
+  puntoDeVenta?: string | null
+  nombreYaavser?: string | null
+  claveYaavser?: string | null
+  estado?: string | null
+  municipioAlcaldia?: string | null
+  fechaBtl?: string | null
+  flujoDePersonas?: string | null
+  fotoUrl?: string | null
+}
+
+type DeletedStore = {
+  ids: string[]
+  items: Record<string, TrashItem>
+}
+
+function readDeletedStore(): DeletedStore {
   try {
-    if (!fs.existsSync(DELETED_STORE)) return []
+    if (!fs.existsSync(DELETED_STORE)) return { ids: [], items: {} }
     const raw = fs.readFileSync(DELETED_STORE, 'utf8')
-    const data = JSON.parse(raw) as { ids?: unknown }
-    if (!Array.isArray(data.ids)) return []
-    return data.ids.filter((id): id is string => typeof id === 'string' && id !== '')
+    const data = JSON.parse(raw) as {
+      ids?: unknown
+      items?: Record<string, TrashItem>
+    }
+    const ids = Array.isArray(data.ids)
+      ? data.ids.filter((id): id is string => typeof id === 'string' && id !== '')
+      : []
+    const items =
+      data.items && typeof data.items === 'object' && !Array.isArray(data.items)
+        ? data.items
+        : {}
+    return { ids: [...new Set(ids)], items }
   } catch {
-    return []
+    return { ids: [], items: {} }
   }
 }
 
-function writeDeletedIds(ids: string[]) {
+function writeDeletedStore(ids: string[], items: Record<string, TrashItem>) {
   const unique = [...new Set(ids)]
+  const cleanItems: Record<string, TrashItem> = {}
+  for (const id of unique) {
+    if (items[id]) cleanItems[id] = { ...items[id], id }
+  }
   fs.writeFileSync(
     DELETED_STORE,
-    `${JSON.stringify({ ids: unique, updatedAt: new Date().toISOString() }, null, 2)}\n`,
+    `${JSON.stringify(
+      { ids: unique, items: cleanItems, updatedAt: new Date().toISOString() },
+      null,
+      2,
+    )}\n`,
     'utf8',
   )
-  return unique
+  return { ids: unique, items: cleanItems }
+}
+
+function itemsList(store: DeletedStore): TrashItem[] {
+  return store.ids
+    .map((id) => {
+      const item = store.items[id]
+      if (!item) return null
+      return { ...item, id }
+    })
+    .filter((item): item is TrashItem => !!item)
+    .sort((a, b) =>
+      String(b.deletedAt || '').localeCompare(String(a.deletedAt || '')),
+    )
+}
+
+function readDeletedIds(): string[] {
+  return readDeletedStore().ids
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -125,7 +177,12 @@ function localApiPlugin(): Plugin {
       }
 
       if (req.method === 'GET') {
-        sendJson(res, 200, { ok: true, ids: readDeletedIds() })
+        const store = readDeletedStore()
+        sendJson(res, 200, {
+          ok: true,
+          ids: store.ids,
+          items: itemsList(store),
+        })
         return
       }
 
@@ -136,33 +193,77 @@ function localApiPlugin(): Plugin {
             id?: string
             password?: string
             action?: string
+            snapshot?: Partial<TrashItem>
           }
           if (body.password !== DELETE_PASSWORD) {
-            sendJson(res, 403, { ok: false, message: 'Contraseña incorrecta', ids: [] })
+            sendJson(res, 403, {
+              ok: false,
+              message: 'Contraseña incorrecta',
+              ids: [],
+              items: [],
+            })
             return
           }
-          const id = (body.id || '').trim()
-          if (!id) {
-            sendJson(res, 400, { ok: false, message: 'Falta el id de la solicitud', ids: [] })
-            return
-          }
-          let ids = readDeletedIds()
           const action = (body.action || 'delete').toLowerCase()
+          const id = (body.id || '').trim()
+          if (!id && action !== 'purge_all') {
+            sendJson(res, 400, {
+              ok: false,
+              message: 'Falta el id de la solicitud',
+              ids: [],
+              items: [],
+            })
+            return
+          }
+
+          const store = readDeletedStore()
+          let ids = [...store.ids]
+          const items = { ...store.items }
+
+          let message = 'Enviada a la papelera'
           if (action === 'restore') {
             ids = ids.filter((x) => x !== id)
-            ids = writeDeletedIds(ids)
-            sendJson(res, 200, { ok: true, ids, message: 'Solicitud restaurada' })
+            delete items[id]
+            message = 'Solicitud restaurada'
+          } else if (action === 'purge') {
+            delete items[id]
+            if (!ids.includes(id)) ids.push(id)
+            message = 'Quitada de la papelera'
+          } else if (action === 'purge_all') {
+            for (const key of Object.keys(items)) delete items[key]
+            message = 'Papelera vaciada'
           } else {
             if (!ids.includes(id)) ids.push(id)
-            ids = writeDeletedIds(ids)
-            sendJson(res, 200, {
-              ok: true,
-              ids,
-              message: 'Solicitud eliminada del portal',
-            })
+            const snap = body.snapshot || {}
+            items[id] = {
+              id,
+              deletedAt: new Date().toISOString(),
+              puntoDeVenta: snap.puntoDeVenta ?? null,
+              nombreYaavser: snap.nombreYaavser ?? null,
+              claveYaavser: snap.claveYaavser ?? null,
+              estado: snap.estado ?? null,
+              municipioAlcaldia: snap.municipioAlcaldia ?? null,
+              fechaBtl: snap.fechaBtl ?? null,
+              flujoDePersonas: snap.flujoDePersonas ?? null,
+              fotoUrl: snap.fotoUrl ?? null,
+            }
+            message = 'Enviada a la papelera'
           }
+
+          const saved = writeDeletedStore(ids, items)
+          sendJson(res, 200, {
+            ok: true,
+            ids: saved.ids,
+            items: itemsList(saved),
+            message,
+          })
         } catch {
-          sendJson(res, 500, { ok: false, message: 'Error al eliminar', ids: [] })
+          sendJson(res, 500, {
+            ok: false,
+            message: 'Error al eliminar',
+            ids: [],
+            items: [],
+          })
         }
         return
       }

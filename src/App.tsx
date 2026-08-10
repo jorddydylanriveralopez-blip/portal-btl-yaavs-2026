@@ -17,7 +17,16 @@ import {
   saveAddressOverride,
   type AddressOverride,
 } from './overrides'
-import { deleteSolicitud, fetchDeletedIds, filterDeleted } from './deleted'
+import {
+  deleteSolicitud,
+  emptyTrash,
+  fetchDeletedStore,
+  filterDeleted,
+  purgeFromTrash,
+  restoreSolicitud,
+  snapshotFromSolicitud,
+  type TrashItem,
+} from './deleted'
 import {
   buildFormularioUrl,
   checkClaveYaavser,
@@ -88,7 +97,19 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [newRequestOpen, setNewRequestOpen] = useState(false)
   const [deletedIds, setDeletedIds] = useState<string[]>([])
+  const [trashItems, setTrashItems] = useState<TrashItem[]>([])
   const [pendingDelete, setPendingDelete] = useState<Solicitud | null>(null)
+  const [trashOpen, setTrashOpen] = useState(false)
+
+  const applyTrashStore = (ids: string[], items: TrashItem[]) => {
+    setDeletedIds(ids)
+    setTrashItems(items)
+  }
+
+  const refreshTrash = useCallback(async () => {
+    const store = await fetchDeletedStore()
+    applyTrashStore(store.ids, store.items)
+  }, [])
 
   const records = useMemo(
     () => filterDeleted(applyAddressOverrides(rawRecords), deletedIds),
@@ -124,16 +145,16 @@ export default function App() {
   }, [debounced, load])
 
   useEffect(() => {
-    void fetchDeletedIds().then(setDeletedIds)
-  }, [])
+    void refreshTrash()
+  }, [refreshTrash])
 
   useEffect(() => {
     const id = window.setInterval(() => {
       void load(filters)
-      void fetchDeletedIds().then(setDeletedIds)
+      void refreshTrash()
     }, 60_000)
     return () => window.clearInterval(id)
-  }, [filters, load])
+  }, [filters, load, refreshTrash])
 
   const sorted = useMemo(() => {
     const list = [...records].filter((s) => {
@@ -236,6 +257,16 @@ export default function App() {
               onClick={() => setNewRequestOpen(true)}
             >
               Nueva solicitud
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet trash-btn"
+              onClick={() => setTrashOpen(true)}
+            >
+              Papelera
+              {trashItems.length > 0 && (
+                <span className="trash-count">{trashItems.length}</span>
+              )}
             </button>
             <button
               type="button"
@@ -485,11 +516,20 @@ export default function App() {
           solicitud={pendingDelete}
           onClose={() => setPendingDelete(null)}
           onToast={showToast}
-          onDeleted={(ids) => {
-            setDeletedIds(ids)
+          onDeleted={(ids, items) => {
+            applyTrashStore(ids, items)
             if (selectedId && ids.includes(selectedId)) setSelectedId(null)
             setPendingDelete(null)
           }}
+        />
+      )}
+
+      {trashOpen && (
+        <TrashPanel
+          items={trashItems}
+          onClose={() => setTrashOpen(false)}
+          onToast={showToast}
+          onStoreChange={applyTrashStore}
         />
       )}
 
@@ -673,36 +713,50 @@ function SolicitudCard({
       className={`item${done ? ' item-done' : ''}`}
       style={{ animationDelay: `${Math.min(i, 14) * 40}ms` }}
     >
-      <button type="button" className="item-hit" onClick={onOpen}>
-        <div className="item-media">
-          {s.fotoExterior?.[0]?.url ? (
-            <img src={s.fotoExterior[0].url} alt="" loading="lazy" />
-          ) : (
-            <div className="item-placeholder">Sin foto</div>
-          )}
-          <div className="badge-stack">
-            {done && <span className="badge badge-done">Terminada</span>}
-            <span className={flujoClass(s.flujoDePersonas)}>
-              {s.flujoDePersonas || '—'}
-            </span>
+      <div className="item-frame">
+        <button
+          type="button"
+          className="item-remove"
+          aria-label="Enviar a la papelera"
+          title="Enviar a la papelera"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRequestDelete()
+          }}
+        >
+          ×
+        </button>
+        <button type="button" className="item-hit" onClick={onOpen}>
+          <div className="item-media">
+            {s.fotoExterior?.[0]?.url ? (
+              <img src={s.fotoExterior[0].url} alt="" loading="lazy" />
+            ) : (
+              <div className="item-placeholder">Sin foto</div>
+            )}
+            <div className="badge-stack">
+              {done && <span className="badge badge-done">Terminada</span>}
+              <span className={flujoClass(s.flujoDePersonas)}>
+                {s.flujoDePersonas || '—'}
+              </span>
+            </div>
           </div>
-        </div>
-        <div className="item-body">
-          <h2>{s.puntoDeVenta || s.nombreYaavser || 'Sin nombre'}</h2>
-          <p className="item-line">
-            {s.nombreYaavser}
-            {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
-          </p>
-          <p className="item-meta">
-            {s.estado}
-            {s.municipioAlcaldia ? ` · ${s.municipioAlcaldia}` : ''}
-          </p>
-          <p className="item-date">{formatFecha(s.fechaBtl)}</p>
-          {view === 'list' && (
-            <p className="item-meta">Ejecutivo: {s.ejecutivoDeVentas || '—'}</p>
-          )}
-        </div>
-      </button>
+          <div className="item-body">
+            <h2>{s.puntoDeVenta || s.nombreYaavser || 'Sin nombre'}</h2>
+            <p className="item-line">
+              {s.nombreYaavser}
+              {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
+            </p>
+            <p className="item-meta">
+              {s.estado}
+              {s.municipioAlcaldia ? ` · ${s.municipioAlcaldia}` : ''}
+            </p>
+            <p className="item-date">{formatFecha(s.fechaBtl)}</p>
+            {view === 'list' && (
+              <p className="item-meta">Ejecutivo: {s.ejecutivoDeVentas || '—'}</p>
+            )}
+          </div>
+        </button>
+      </div>
       <div className="item-actions">
         <button
           type="button"
@@ -724,13 +778,6 @@ function SolicitudCard({
         >
           CSV
         </button>
-        <button
-          type="button"
-          className="btn btn-danger"
-          onClick={onRequestDelete}
-        >
-          Eliminar
-        </button>
       </div>
     </li>
   )
@@ -745,7 +792,7 @@ function DeleteConfirm({
   solicitud: Solicitud
   onClose: () => void
   onToast: (msg: string) => void
-  onDeleted: (ids: string[]) => void
+  onDeleted: (ids: string[], items: TrashItem[]) => void
 }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -760,13 +807,17 @@ function DeleteConfirm({
     }
     setBusy(true)
     try {
-      const result = await deleteSolicitud(s.id, password)
+      const result = await deleteSolicitud(
+        s.id,
+        password,
+        snapshotFromSolicitud(s),
+      )
       if (!result.ok) {
-        setError(result.message || 'No se pudo eliminar')
+        setError(result.message || 'No se pudo enviar a la papelera')
         return
       }
-      onToast(result.message || 'Solicitud eliminada')
-      onDeleted(result.ids)
+      onToast(result.message || 'Enviada a la papelera')
+      onDeleted(result.ids, result.items)
     } catch {
       setError('Error de red al eliminar')
     } finally {
@@ -790,8 +841,8 @@ function DeleteConfirm({
       >
         <div className="gate-head">
           <div>
-            <p className="gate-eyebrow">Eliminar solicitud</p>
-            <h2 id="delete-title">¿Quitar del portal?</h2>
+            <p className="gate-eyebrow">Papelera</p>
+            <h2 id="delete-title">¿Enviar a la papelera?</h2>
             <p className="gate-sub">
               {s.puntoDeVenta || s.nombreYaavser || 'Solicitud'}
               {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
@@ -810,8 +861,8 @@ function DeleteConfirm({
 
         <form className="gate-form" onSubmit={(e) => void handleDelete(e)}>
           <p className="gate-sub" style={{ margin: 0 }}>
-            Se oculta en el portal para todos. La clave quedará libre para una
-            nueva solicitud. Contraseña: la misma de editar dirección.
+            Se guarda en la papelera del portal. Podrás restaurarla después.
+            Contraseña: la misma de editar dirección.
           </p>
           <label className="gate-label" htmlFor="delete-password">
             Contraseña
@@ -848,10 +899,177 @@ function DeleteConfirm({
               className="btn btn-danger-solid"
               disabled={busy || !password}
             >
-              {busy ? 'Eliminando…' : 'Eliminar'}
+              {busy ? 'Guardando…' : 'Mover a papelera'}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+function TrashPanel({
+  items,
+  onClose,
+  onToast,
+  onStoreChange,
+}: {
+  items: TrashItem[]
+  onClose: () => void
+  onToast: (msg: string) => void
+  onStoreChange: (ids: string[], items: TrashItem[]) => void
+}) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  async function run(
+    id: string,
+    action: 'restore' | 'purge' | 'purge_all',
+  ) {
+    setError('')
+    if (password !== ADDRESS_EDIT_PASSWORD) {
+      setError('Contraseña incorrecta')
+      return
+    }
+    setBusyId(id)
+    try {
+      const result =
+        action === 'restore'
+          ? await restoreSolicitud(id, password)
+          : action === 'purge'
+            ? await purgeFromTrash(id, password)
+            : await emptyTrash(password)
+      if (!result.ok) {
+        setError(result.message || 'No se pudo completar')
+        return
+      }
+      onStoreChange(result.ids, result.items)
+      onToast(result.message || 'Listo')
+    } catch {
+      setError('Error de red')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={(ev) => {
+        if (ev.target === ev.currentTarget && !busyId) onClose()
+      }}
+    >
+      <div
+        className="modal trash-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="trash-title"
+      >
+        <div className="gate-head">
+          <div>
+            <p className="gate-eyebrow">Portal BTL</p>
+            <h2 id="trash-title">Papelera</h2>
+            <p className="gate-sub">
+              {items.length
+                ? `${items.length} solicitud${items.length === 1 ? '' : 'es'} guardada${items.length === 1 ? '' : 's'}`
+                : 'No hay solicitudes en la papelera'}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="modal-close gate-close"
+            onClick={onClose}
+            disabled={!!busyId}
+            aria-label="Cerrar"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="trash-auth">
+          <label className="gate-label" htmlFor="trash-password">
+            Contraseña para restaurar o vaciar
+          </label>
+          <input
+            id="trash-password"
+            className="gate-input"
+            type="password"
+            autoComplete="current-password"
+            placeholder="orlando01"
+            value={password}
+            disabled={!!busyId}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              setError('')
+            }}
+          />
+          {error && (
+            <div className="gate-error" role="alert">
+              <p>{error}</p>
+            </div>
+          )}
+        </div>
+
+        {items.length > 0 && (
+          <div className="trash-toolbar">
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={!!busyId || !password}
+              onClick={() => void run('_all', 'purge_all')}
+            >
+              Vaciar papelera
+            </button>
+          </div>
+        )}
+
+        <ul className="trash-list">
+          {items.map((item) => (
+            <li key={item.id} className="trash-row">
+              <div className="trash-thumb">
+                {item.fotoUrl ? (
+                  <img src={item.fotoUrl} alt="" />
+                ) : (
+                  <span>Sin foto</span>
+                )}
+              </div>
+              <div className="trash-copy">
+                <strong>
+                  {item.puntoDeVenta || item.nombreYaavser || 'Solicitud'}
+                </strong>
+                <p>
+                  {item.nombreYaavser}
+                  {item.claveYaavser ? ` · ${item.claveYaavser}` : ''}
+                </p>
+                <p className="trash-meta">
+                  {item.estado}
+                  {item.municipioAlcaldia ? ` · ${item.municipioAlcaldia}` : ''}
+                  {item.fechaBtl ? ` · ${formatFecha(item.fechaBtl)}` : ''}
+                </p>
+              </div>
+              <div className="trash-actions">
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  disabled={!!busyId || !password}
+                  onClick={() => void run(item.id, 'restore')}
+                >
+                  {busyId === item.id ? '…' : 'Restaurar'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={!!busyId || !password}
+                  onClick={() => void run(item.id, 'purge')}
+                >
+                  Quitar
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   )
@@ -1037,7 +1255,7 @@ function Detail({
               className="btn btn-danger"
               onClick={onRequestDelete}
             >
-              Eliminar
+              A papelera
             </button>
           </div>
 

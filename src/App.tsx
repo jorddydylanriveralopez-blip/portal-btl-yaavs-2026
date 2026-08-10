@@ -31,17 +31,23 @@ const EMPTY_FILTERS: Filters = {
 type SortKey = 'fecha-desc' | 'fecha-asc' | 'nombre' | 'estado'
 type StatusFilter = 'todas' | 'activas' | 'terminadas'
 
-/** Solicitudes con fecha BTL anterior al 10 de agosto 2026 = terminadas */
-const TERMINADA_ANTES_DE = '2026-08-10'
+function todayKey(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 function fechaKey(iso?: string): string {
   if (!iso) return ''
   return iso.slice(0, 10)
 }
 
+/** Terminada si la fecha BTL ya pasó (es anterior a hoy). */
 function isTerminada(s: Solicitud): boolean {
   const d = fechaKey(s.fechaBtl)
-  return !!d && d < TERMINADA_ANTES_DE
+  return !!d && d < todayKey()
 }
 
 function useDebounced<T>(value: T, ms: number): T {

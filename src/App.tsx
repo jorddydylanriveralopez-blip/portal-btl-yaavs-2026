@@ -29,6 +29,20 @@ const EMPTY_FILTERS: Filters = {
 }
 
 type SortKey = 'fecha-desc' | 'fecha-asc' | 'nombre' | 'estado'
+type StatusFilter = 'todas' | 'activas' | 'terminadas'
+
+/** Solicitudes con fecha BTL anterior al 10 de agosto 2026 = terminadas */
+const TERMINADA_ANTES_DE = '2026-08-10'
+
+function fechaKey(iso?: string): string {
+  if (!iso) return ''
+  return iso.slice(0, 10)
+}
+
+function isTerminada(s: Solicitud): boolean {
+  const d = fechaKey(s.fechaBtl)
+  return !!d && d < TERMINADA_ANTES_DE
+}
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value)
@@ -57,6 +71,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [sort, setSort] = useState<SortKey>('fecha-desc')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('todas')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -104,7 +119,11 @@ export default function App() {
   }, [filters, load])
 
   const sorted = useMemo(() => {
-    const list = [...records]
+    const list = [...records].filter((s) => {
+      if (statusFilter === 'terminadas') return isTerminada(s)
+      if (statusFilter === 'activas') return !isTerminada(s)
+      return true
+    })
     list.sort((a, b) => {
       if (sort === 'nombre') {
         return (a.puntoDeVenta || a.nombreYaavser || '').localeCompare(
@@ -120,16 +139,18 @@ export default function App() {
       return sort === 'fecha-asc' ? da.localeCompare(db) : db.localeCompare(da)
     })
     return list
-  }, [records, sort])
+  }, [records, sort, statusFilter])
 
   const stats = useMemo(() => {
     const byFlujo: Record<string, number> = {}
     const withPhoto = records.filter((r) => (r.fotoExterior?.length || 0) > 0).length
+    const terminadas = records.filter(isTerminada).length
+    const activas = records.length - terminadas
     for (const r of records) {
       const f = r.flujoDePersonas || 'Sin dato'
       byFlujo[f] = (byFlujo[f] || 0) + 1
     }
-    return { byFlujo, withPhoto }
+    return { byFlujo, withPhoto, terminadas, activas }
   }, [records])
 
   const estados = useMemo(() => {
@@ -220,21 +241,25 @@ export default function App() {
       <div className="page">
         <section className="metrics" aria-label="Resumen">
           <div className="metric">
-            <span>Filtradas</span>
+            <span>Total</span>
             <strong>{records.length}</strong>
+          </div>
+          <div className="metric">
+            <span>Activas</span>
+            <strong>{stats.activas}</strong>
+          </div>
+          <div className="metric">
+            <span>Terminadas</span>
+            <strong>{stats.terminadas}</strong>
           </div>
           <div className="metric">
             <span>Con foto</span>
             <strong>{stats.withPhoto}</strong>
           </div>
-          {Object.entries(stats.byFlujo)
-            .slice(0, 3)
-            .map(([k, v]) => (
-              <div key={k} className="metric">
-                <span>Flujo {k}</span>
-                <strong>{v}</strong>
-              </div>
-            ))}
+          <div className="metric">
+            <span>Viendo</span>
+            <strong>{sorted.length}</strong>
+          </div>
           {updatedAt && (
             <div className="metric metric-time">
               <span>Última sync</span>
@@ -302,6 +327,17 @@ export default function App() {
             />
           </label>
           <label className="field">
+            <span>Estatus</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            >
+              <option value="todas">Todas</option>
+              <option value="activas">Activas</option>
+              <option value="terminadas">Terminadas</option>
+            </select>
+          </label>
+          <label className="field">
             <span>Orden</span>
             <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
               <option value="fecha-desc">Fecha ↓</option>
@@ -356,42 +392,45 @@ export default function App() {
 
           <ul className={view === 'grid' ? 'board board-grid' : 'board board-list'}>
             {sorted.map((s, i) => (
-              <li
-                key={s.id}
-                className="item"
-                style={{ animationDelay: `${Math.min(i, 14) * 40}ms` }}
+            <li
+              key={s.id}
+              className={`item${isTerminada(s) ? ' item-done' : ''}`}
+              style={{ animationDelay: `${Math.min(i, 14) * 40}ms` }}
+            >
+              <button
+                type="button"
+                className="item-hit"
+                onClick={() => setSelectedId(s.id)}
               >
-                <button
-                  type="button"
-                  className="item-hit"
-                  onClick={() => setSelectedId(s.id)}
-                >
-                  <div className="item-media">
-                    {s.fotoExterior?.[0]?.url ? (
-                      <img src={s.fotoExterior[0].url} alt="" loading="lazy" />
-                    ) : (
-                      <div className="item-placeholder">Sin foto</div>
-                    )}
+                <div className="item-media">
+                  {s.fotoExterior?.[0]?.url ? (
+                    <img src={s.fotoExterior[0].url} alt="" loading="lazy" />
+                  ) : (
+                    <div className="item-placeholder">Sin foto</div>
+                  )}
+                  <div className="badge-stack">
+                    {isTerminada(s) && <span className="badge badge-done">Terminada</span>}
                     <span className={flujoClass(s.flujoDePersonas)}>
                       {s.flujoDePersonas || '—'}
                     </span>
                   </div>
-                  <div className="item-body">
-                    <h2>{s.puntoDeVenta || s.nombreYaavser || 'Sin nombre'}</h2>
-                    <p className="item-line">
-                      {s.nombreYaavser}
-                      {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
-                    </p>
-                    <p className="item-meta">
-                      {s.estado}
-                      {s.municipioAlcaldia ? ` · ${s.municipioAlcaldia}` : ''}
-                    </p>
-                    <p className="item-date">{formatFecha(s.fechaBtl)}</p>
-                    {view === 'list' && (
-                      <p className="item-meta">Ejecutivo: {s.ejecutivoDeVentas || '—'}</p>
-                    )}
-                  </div>
-                </button>
+                </div>
+                <div className="item-body">
+                  <h2>{s.puntoDeVenta || s.nombreYaavser || 'Sin nombre'}</h2>
+                  <p className="item-line">
+                    {s.nombreYaavser}
+                    {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
+                  </p>
+                  <p className="item-meta">
+                    {s.estado}
+                    {s.municipioAlcaldia ? ` · ${s.municipioAlcaldia}` : ''}
+                  </p>
+                  <p className="item-date">{formatFecha(s.fechaBtl)}</p>
+                  {view === 'list' && (
+                    <p className="item-meta">Ejecutivo: {s.ejecutivoDeVentas || '—'}</p>
+                  )}
+                </div>
+              </button>
                 <div className="item-actions">
                   <button
                     type="button"
@@ -558,9 +597,12 @@ function Detail({
           )}
           <div className="modal-hero-veil" />
           <div className="modal-hero-top">
-            <span className={flujoClass(s.flujoDePersonas)}>
-              {s.flujoDePersonas || 'Flujo'}
-            </span>
+            <div className="badge-stack">
+              {isTerminada(s) && <span className="badge badge-done">Terminada</span>}
+              <span className={flujoClass(s.flujoDePersonas)}>
+                {s.flujoDePersonas || 'Flujo'}
+              </span>
+            </div>
             <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
               ✕
             </button>
@@ -616,6 +658,8 @@ function Detail({
           </div>
 
           <div className="chip-row">
+            {isTerminada(display) && <span className="chip chip-done">Terminada</span>}
+            {!isTerminada(display) && <span className="chip chip-active">Activa</span>}
             {display.estado && <span className="chip">{display.estado}</span>}
             {display.municipioAlcaldia && (
               <span className="chip">{display.municipioAlcaldia}</span>

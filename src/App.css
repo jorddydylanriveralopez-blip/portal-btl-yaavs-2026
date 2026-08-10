@@ -262,7 +262,7 @@ a {
 
 .toolbar {
   display: grid;
-  grid-template-columns: 1.5fr repeat(5, minmax(0, 0.9fr)) auto;
+  grid-template-columns: 1.4fr repeat(6, minmax(0, 0.85fr)) auto;
   gap: 0.75rem;
   margin-top: 1.1rem;
   padding: 1rem 0 0.25rem;
@@ -471,11 +471,18 @@ a {
   font-weight: 600;
 }
 
-.badge {
+.badge-stack {
   position: absolute;
   top: 0.75rem;
   left: 0.75rem;
   z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-width: calc(100% - 1.5rem);
+}
+
+.badge {
   padding: 0.28rem 0.6rem;
   border-radius: 8px;
   background: rgba(7, 24, 36, 0.78);
@@ -485,6 +492,36 @@ a {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   backdrop-filter: blur(6px);
+}
+
+.badge-stack .badge {
+  position: static;
+}
+
+.badge-done {
+  background: rgba(46, 125, 90, 0.92);
+}
+
+.item-done {
+  opacity: 0.92;
+}
+
+.item-done .item-media img {
+  filter: grayscale(0.35);
+}
+
+.item-done .item-body h2::after {
+  content: none;
+}
+
+.chip-done {
+  background: rgba(46, 125, 90, 0.14);
+  color: #1f6b4a;
+}
+
+.chip-active {
+  background: rgba(0, 160, 200, 0.14);
+  color: #006987;
 }
 
 .badge-alto {

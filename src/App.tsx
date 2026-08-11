@@ -612,36 +612,48 @@ function NewRequestGate({
       }}
     >
       <div
-        className="modal gate-modal"
+        className="sheet sheet-confirm"
         role="dialog"
         aria-modal="true"
         aria-labelledby="gate-title"
       >
-        <div className="gate-head">
-          <div>
-            <p className="gate-eyebrow">Nueva solicitud</p>
-            <h2 id="gate-title">Valida tu clave YAAVSER</h2>
-            <p className="gate-sub">
-              Si la clave ya está registrada, no podrás abrir el formulario.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="modal-close gate-close"
-            onClick={onClose}
-            aria-label="Cerrar"
-          >
-            ×
-          </button>
+        <button
+          type="button"
+          className="sheet-close"
+          onClick={onClose}
+          aria-label="Cerrar"
+        >
+          ×
+        </button>
+
+        <div className="sheet-icon sheet-icon-key" aria-hidden>
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
+            <path
+              d="M15 8a4 4 0 1 0-3.46 5.97L7 18.5V21h3l1.2-1.2 1.3 1.3 2.1-2.1-1.3-1.3L15 15.5A4 4 0 0 0 15 8Z"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="15.5" cy="8.5" r="1" fill="currentColor" />
+          </svg>
         </div>
 
-        <form className="gate-form" onSubmit={(e) => void handleContinue(e)}>
-          <label className="gate-label" htmlFor="clave-yaavser">
+        <p className="sheet-kicker">Nueva solicitud</p>
+        <h2 id="gate-title" className="sheet-title">
+          Valida tu clave YAAVSER
+        </h2>
+        <p className="sheet-lead">
+          Si la clave ya está registrada, no podrás abrir el formulario.
+        </p>
+
+        <form className="sheet-form" onSubmit={(e) => void handleContinue(e)}>
+          <label className="sheet-label" htmlFor="clave-yaavser">
             Clave YAAVSER
           </label>
           <input
             id="clave-yaavser"
-            className="gate-input"
+            className="sheet-input"
             type="text"
             autoFocus
             autoComplete="off"
@@ -656,23 +668,21 @@ function NewRequestGate({
           />
 
           {error && (
-            <div className="gate-error" role="alert">
-              <p>{error}</p>
+            <div className="sheet-error" role="alert">
+              {error}
               {existing && (
-                <p className="gate-existing">
+                <span className="sheet-error-sub">
                   {existing.puntoDeVenta || existing.nombreYaavser || 'Solicitud existente'}
-                  {existing.fechaBtl
-                    ? ` · ${formatFecha(existing.fechaBtl)}`
-                    : ''}
-                </p>
+                  {existing.fechaBtl ? ` · ${formatFecha(existing.fechaBtl)}` : ''}
+                </span>
               )}
             </div>
           )}
 
-          <div className="gate-actions">
+          <div className="sheet-actions">
             <button
               type="button"
-              className="btn btn-quiet"
+              className="btn sheet-btn-ghost"
               onClick={onClose}
               disabled={checking}
             >
@@ -680,10 +690,10 @@ function NewRequestGate({
             </button>
             <button
               type="submit"
-              className="btn btn-solid dark"
+              className="btn sheet-btn-primary"
               disabled={checking || !clave.trim()}
             >
-              {checking ? 'Validando…' : 'Continuar al formulario'}
+              {checking ? 'Validando…' : 'Continuar'}
             </button>
           </div>
         </form>
@@ -834,45 +844,71 @@ function DeleteConfirm({
       }}
     >
       <div
-        className="modal gate-modal"
+        className="sheet sheet-confirm"
         role="dialog"
         aria-modal="true"
         aria-labelledby="delete-title"
       >
-        <div className="gate-head">
-          <div>
-            <p className="gate-eyebrow">Papelera</p>
-            <h2 id="delete-title">¿Enviar a la papelera?</h2>
-            <p className="gate-sub">
-              {s.puntoDeVenta || s.nombreYaavser || 'Solicitud'}
-              {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="modal-close gate-close"
-            onClick={onClose}
-            disabled={busy}
-            aria-label="Cerrar"
-          >
-            ×
-          </button>
+        <button
+          type="button"
+          className="sheet-close"
+          onClick={onClose}
+          disabled={busy}
+          aria-label="Cerrar"
+        >
+          ×
+        </button>
+
+        <div className="sheet-icon sheet-icon-trash" aria-hidden>
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
+            <path
+              d="M4 7h16M9 7V5h6v2m-7 3v8m4-8v8m4-8v8M6 7l1 13h10l1-13"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </div>
 
-        <form className="gate-form" onSubmit={(e) => void handleDelete(e)}>
-          <p className="gate-sub" style={{ margin: 0 }}>
-            Se guarda en la papelera del portal. Podrás restaurarla después.
-            Contraseña: la misma de editar dirección.
-          </p>
-          <label className="gate-label" htmlFor="delete-password">
+        <h2 id="delete-title" className="sheet-title">
+          ¿Enviar a la papelera?
+        </h2>
+        <p className="sheet-lead">
+          Se guarda en el portal y podrás restaurarla después.
+        </p>
+
+        <div className="sheet-preview">
+          {s.fotoExterior?.[0]?.url ? (
+            <img src={s.fotoExterior[0].url} alt="" />
+          ) : (
+            <div className="sheet-preview-empty">Sin foto</div>
+          )}
+          <div>
+            <strong>{s.puntoDeVenta || s.nombreYaavser || 'Solicitud'}</strong>
+            <span>
+              {s.nombreYaavser}
+              {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
+            </span>
+            <span className="sheet-preview-meta">
+              {[s.estado, s.municipioAlcaldia, formatFecha(s.fechaBtl)]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </div>
+        </div>
+
+        <form className="sheet-form" onSubmit={(e) => void handleDelete(e)}>
+          <label className="sheet-label" htmlFor="delete-password">
             Contraseña
           </label>
           <input
             id="delete-password"
-            className="gate-input"
+            className="sheet-input"
             type="password"
             autoFocus
             autoComplete="current-password"
+            placeholder="Misma clave de editar dirección"
             value={password}
             disabled={busy}
             onChange={(e) => {
@@ -881,14 +917,14 @@ function DeleteConfirm({
             }}
           />
           {error && (
-            <div className="gate-error" role="alert">
-              <p>{error}</p>
+            <div className="sheet-error" role="alert">
+              {error}
             </div>
           )}
-          <div className="gate-actions">
+          <div className="sheet-actions">
             <button
               type="button"
-              className="btn btn-quiet"
+              className="btn sheet-btn-ghost"
               onClick={onClose}
               disabled={busy}
             >
@@ -896,7 +932,7 @@ function DeleteConfirm({
             </button>
             <button
               type="submit"
-              className="btn btn-danger-solid"
+              className="btn sheet-btn-danger"
               disabled={busy || !password}
             >
               {busy ? 'Guardando…' : 'Mover a papelera'}
@@ -962,42 +998,45 @@ function TrashPanel({
       }}
     >
       <div
-        className="modal trash-modal"
+        className="sheet sheet-trash"
         role="dialog"
         aria-modal="true"
         aria-labelledby="trash-title"
       >
-        <div className="gate-head">
-          <div>
-            <p className="gate-eyebrow">Portal BTL</p>
+        <header className="sheet-top">
+          <div className="sheet-top-copy">
+            <p className="sheet-kicker">Portal BTL</p>
             <h2 id="trash-title">Papelera</h2>
-            <p className="gate-sub">
+            <p className="sheet-lead">
               {items.length
                 ? `${items.length} solicitud${items.length === 1 ? '' : 'es'} guardada${items.length === 1 ? '' : 's'}`
-                : 'No hay solicitudes en la papelera'}
+                : 'Vacía por ahora'}
             </p>
           </div>
           <button
             type="button"
-            className="modal-close gate-close"
+            className="sheet-close"
             onClick={onClose}
             disabled={!!busyId}
             aria-label="Cerrar"
           >
             ×
           </button>
-        </div>
+        </header>
 
-        <div className="trash-auth">
-          <label className="gate-label" htmlFor="trash-password">
-            Contraseña para restaurar o vaciar
-          </label>
+        <div className="sheet-lock">
+          <div className="sheet-lock-copy">
+            <label className="sheet-label" htmlFor="trash-password">
+              Contraseña
+            </label>
+            <p>Necesaria para restaurar o vaciar</p>
+          </div>
           <input
             id="trash-password"
-            className="gate-input"
+            className="sheet-input"
             type="password"
             autoComplete="current-password"
-            placeholder="orlando01"
+            placeholder="••••••••"
             value={password}
             disabled={!!busyId}
             onChange={(e) => {
@@ -1005,71 +1044,91 @@ function TrashPanel({
               setError('')
             }}
           />
-          {error && (
-            <div className="gate-error" role="alert">
-              <p>{error}</p>
-            </div>
-          )}
         </div>
 
+        {error && (
+          <div className="sheet-error" role="alert">
+            {error}
+          </div>
+        )}
+
         {items.length > 0 && (
-          <div className="trash-toolbar">
+          <div className="sheet-toolbar">
+            <span>{items.length} en papelera</span>
             <button
               type="button"
-              className="btn btn-danger"
+              className="btn sheet-btn-ghost-danger"
               disabled={!!busyId || !password}
               onClick={() => void run('_all', 'purge_all')}
             >
-              Vaciar papelera
+              Vaciar todo
             </button>
           </div>
         )}
 
-        <ul className="trash-list">
-          {items.map((item) => (
-            <li key={item.id} className="trash-row">
-              <div className="trash-thumb">
-                {item.fotoUrl ? (
-                  <img src={item.fotoUrl} alt="" />
-                ) : (
-                  <span>Sin foto</span>
-                )}
-              </div>
-              <div className="trash-copy">
-                <strong>
-                  {item.puntoDeVenta || item.nombreYaavser || 'Solicitud'}
-                </strong>
-                <p>
-                  {item.nombreYaavser}
-                  {item.claveYaavser ? ` · ${item.claveYaavser}` : ''}
-                </p>
-                <p className="trash-meta">
-                  {item.estado}
-                  {item.municipioAlcaldia ? ` · ${item.municipioAlcaldia}` : ''}
-                  {item.fechaBtl ? ` · ${formatFecha(item.fechaBtl)}` : ''}
-                </p>
-              </div>
-              <div className="trash-actions">
-                <button
-                  type="button"
-                  className="btn btn-soft"
-                  disabled={!!busyId || !password}
-                  onClick={() => void run(item.id, 'restore')}
-                >
-                  {busyId === item.id ? '…' : 'Restaurar'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  disabled={!!busyId || !password}
-                  onClick={() => void run(item.id, 'purge')}
-                >
-                  Quitar
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        {items.length === 0 ? (
+          <div className="sheet-empty">
+            <div className="sheet-icon sheet-icon-muted" aria-hidden>
+              <svg viewBox="0 0 24 24" width="32" height="32" fill="none">
+                <path
+                  d="M4 7h16M9 7V5h6v2m-7 3v8m4-8v8m4-8v8M6 7l1 13h10l1-13"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+            <p>No hay solicitudes aquí</p>
+            <span>Usa la × de cada tarjeta para enviar una.</span>
+          </div>
+        ) : (
+          <ul className="sheet-list">
+            {items.map((item) => (
+              <li key={item.id} className="sheet-row">
+                <div className="sheet-row-media">
+                  {item.fotoUrl ? (
+                    <img src={item.fotoUrl} alt="" />
+                  ) : (
+                    <span>Sin foto</span>
+                  )}
+                </div>
+                <div className="sheet-row-copy">
+                  <strong>
+                    {item.puntoDeVenta || item.nombreYaavser || 'Solicitud'}
+                  </strong>
+                  <p>
+                    {item.nombreYaavser}
+                    {item.claveYaavser ? ` · ${item.claveYaavser}` : ''}
+                  </p>
+                  <p className="sheet-row-meta">
+                    {[item.estado, item.municipioAlcaldia, item.fechaBtl ? formatFecha(item.fechaBtl) : '']
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                </div>
+                <div className="sheet-row-actions">
+                  <button
+                    type="button"
+                    className="btn sheet-btn-restore"
+                    disabled={!!busyId || !password}
+                    onClick={() => void run(item.id, 'restore')}
+                  >
+                    {busyId === item.id ? '…' : 'Restaurar'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn sheet-btn-ghost-danger"
+                    disabled={!!busyId || !password}
+                    onClick={() => void run(item.id, 'purge')}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   )

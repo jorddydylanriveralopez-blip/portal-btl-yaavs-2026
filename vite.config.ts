@@ -195,7 +195,7 @@ function localApiPlugin(): Plugin {
             action?: string
             snapshot?: Partial<TrashItem>
           }
-          if (!DELETE_PASSWORDS.has(body.password || '')) {
+          if (!DELETE_PASSWORDS.has((body.password || '').trim())) {
             sendJson(res, 403, {
               ok: false,
               message: 'Contraseña incorrecta',

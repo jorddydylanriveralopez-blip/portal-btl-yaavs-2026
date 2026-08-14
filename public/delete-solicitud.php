@@ -22,7 +22,7 @@ const DELETE_PASSWORDS = ['orlando01', 'Noemi2026'];
 const STORE_FILE = __DIR__ . '/deleted-solicitudes.json';
 
 function password_ok(string $password): bool {
-  return in_array($password, DELETE_PASSWORDS, true);
+  return in_array(trim($password), DELETE_PASSWORDS, true);
 }
 
 /**

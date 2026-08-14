@@ -1,0 +1,163 @@
+name: Deploy Portal BTL to Hostinger
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [cursor/eliminar-solicitud-y-clave-unica, main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+          # keep live trash store if API reachable
+          curl -fsSL "https://coral-oryx-137304.hostingersite.com/delete-solicitud.php" -o /tmp/deleted-live.json || echo '{}' > /tmp/deleted-live.json
+          node <<'NODE'
+          const fs = require('fs');
+          let live = {};
+          try { live = JSON.parse(fs.readFileSync('/tmp/deleted-live.json','utf8')); } catch {}
+          const ids = (live.ids || []).filter((id) => id && id !== 'test' && id !== 'probe-noemi');
+          let items = {};
+          if (Array.isArray(live.items)) {
+            for (const row of live.items) {
+              if (row && row.id && ids.includes(row.id)) {
+                const { id, ...rest } = row;
+                items[id] = rest;
+              }
+            }
+          } else if (live.items && typeof live.items === 'object') {
+            items = Object.fromEntries(Object.entries(live.items).filter(([k]) => ids.includes(k)));
+          }
+          fs.writeFileSync('dist/deleted-solicitudes.json', JSON.stringify({ ids, items, updatedAt: new Date().toISOString() }, null, 2) + '\n');
+          NODE
+          cd dist && zip -r ../portal-btl-deploy.zip .
+          ls -lh ../portal-btl-deploy.zip
+
+      - name: Install upload deps
+        run: npm install --no-save axios tus-js-client
+
+      - name: Upload and deploy
+        env:
+          HOSTINGER_API_TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+          HOSTINGER_USERNAME: u376360150
+          HOSTINGER_DOMAIN: coral-oryx-137304.hostingersite.com
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const axios = require('axios');
+          const tus = require('tus-js-client');
+          const TOKEN = process.env.HOSTINGER_API_TOKEN;
+          const HUSER = process.env.HOSTINGER_USERNAME;
+          const DOMAIN = process.env.HOSTINGER_DOMAIN;
+          const ARCHIVE = path.resolve('portal-btl-deploy.zip');
+          const BASE = 'https://developers.hostinger.com';
+          const headers = { Authorization: 'Bearer ' + TOKEN, Accept: 'application/json', 'User-Agent': 'github-actions-hostinger-deploy/1.0' };
+          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+          async function withRetry(fn, label, attempts = 6) {
+            let last;
+            for (let i = 0; i < attempts; i++) {
+              try { return await fn(i); } catch (e) {
+                last = e;
+                console.error(label, i + 1, e.response && e.response.status, e.message);
+                await sleep(2000 * (i + 1));
+              }
+            }
+            throw last;
+          }
+
+          (async () => {
+            if (!TOKEN) throw new Error('missing token');
+            if (!fs.existsSync(ARCHIVE)) throw new Error('missing archive');
+            const relativePath = path.basename(ARCHIVE);
+            const stats = fs.statSync(ARCHIVE);
+
+            const creds = await withRetry(async () => {
+              const res = await axios.post(BASE + '/api/hosting/v1/files/upload-urls', { username: HUSER, domain: DOMAIN }, {
+                headers: { ...headers, 'Content-Type': 'application/json' }, validateStatus: () => true,
+              });
+              if (res.status !== 200) throw Object.assign(new Error('upload-urls'), { response: res });
+              return res.data;
+            }, 'upload-urls');
+
+            const uploadUrlWithFile = creds.url.replace(/\/$/, '') + '/' + relativePath + '?override=true';
+            const requestHeaders = {
+              'X-Auth': creds.auth_key,
+              'X-Auth-Rest': creds.rest_auth_key,
+              'upload-length': String(stats.size),
+              'upload-offset': '0',
+            };
+
+            await withRetry(async () => {
+              const createRes = await axios.post(uploadUrlWithFile, '', { headers: requestHeaders, timeout: 60000, validateStatus: () => true });
+              console.log('create', createRes.status);
+              if (createRes.status !== 201 && createRes.status !== 200) throw Object.assign(new Error('create'), { response: createRes });
+            }, 'create');
+
+            await new Promise((resolve, reject) => {
+              const upload = new tus.Upload(fs.createReadStream(ARCHIVE), {
+                uploadUrl: uploadUrlWithFile,
+                retryDelays: [1000, 2000, 4000, 8000],
+                uploadDataDuringCreation: false,
+                parallelUploads: 1,
+                chunkSize: 10 * 1024 * 1024,
+                headers: requestHeaders,
+                removeFingerprintOnSuccess: true,
+                uploadSize: stats.size,
+                metadata: { filename: relativePath },
+                onError: reject,
+                onProgress: (s, t) => console.log('progress', s, t),
+                onSuccess: () => resolve(),
+              });
+              upload.start();
+            });
+            console.log('upload ok');
+
+            const deployRes = await withRetry(async () => {
+              const res = await axios.post(
+                `${BASE}/api/hosting/v1/accounts/${HUSER}/websites/${DOMAIN}/deploy`,
+                { archive_path: relativePath },
+                { headers: { ...headers, 'Content-Type': 'application/json' }, validateStatus: () => true, timeout: 180000 },
+              );
+              console.log('deploy', res.status, JSON.stringify(res.data).slice(0, 300));
+              if (res.status < 200 || res.status >= 300) throw Object.assign(new Error('deploy'), { response: res });
+              return res.data;
+            }, 'deploy');
+
+            for (let i = 1; i <= 20; i++) {
+              await sleep(4000);
+              const html = (await axios.get('https://' + DOMAIN + '/?v=' + Date.now(), { validateStatus: () => true })).data;
+              const m = String(html).match(/assets\/index-[A-Za-z0-9_-]+\.js/);
+              console.log('probe', i, m && m[0]);
+              if (m && !String(m[0]).includes('eP9c0uj')) {
+                console.log('LIVE_UPDATED');
+                break;
+              }
+            }
+
+            const noemi = await axios.post('https://' + DOMAIN + '/delete-solicitud.php', {
+              id: 'gha-probe-noemi', password: 'Noemi2026', action: 'delete',
+            }, { headers: { 'Content-Type': 'application/json' }, validateStatus: () => true });
+            console.log('noemi', noemi.status, JSON.stringify(noemi.data).slice(0, 200));
+            await axios.post('https://' + DOMAIN + '/delete-solicitud.php', {
+              id: 'gha-probe-noemi', password: 'orlando01', action: 'purge',
+            }, { headers: { 'Content-Type': 'application/json' }, validateStatus: () => true });
+            if (!noemi.data || noemi.data.ok !== true) {
+              throw new Error('Noemi2026 still rejected on live');
+            }
+            console.log('SUCCESS LIVE_URL=https://' + DOMAIN + '/');
+          })().catch((e) => {
+            console.error('DEPLOY_FAILED', e.response && e.response.status, e.message);
+            process.exit(1);
+          });
+          NODE

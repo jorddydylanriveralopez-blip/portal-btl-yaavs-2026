@@ -7,7 +7,8 @@ export const ADDRESS_EDIT_PASSWORD = 'orlando01'
 export const DELETE_PASSWORDS = ['orlando01', 'Noemi2026'] as const
 
 export function isDeletePassword(password: string): boolean {
-  return (DELETE_PASSWORDS as readonly string[]).includes(password)
+  const normalized = password.trim()
+  return (DELETE_PASSWORDS as readonly string[]).includes(normalized)
 }
 
 export type AddressOverride = {

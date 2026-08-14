@@ -7,7 +7,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 const DELETED_STORE = path.join(rootDir, 'public', 'deleted-solicitudes.json')
-const DELETE_PASSWORD = 'orlando01'
+const DELETE_PASSWORDS = new Set(['orlando01', 'Noemi2026'])
 
 type ConnectNext = () => void
 
@@ -195,7 +195,7 @@ function localApiPlugin(): Plugin {
             action?: string
             snapshot?: Partial<TrashItem>
           }
-          if (body.password !== DELETE_PASSWORD) {
+          if (!DELETE_PASSWORDS.has(body.password || '')) {
             sendJson(res, 403, {
               ok: false,
               message: 'Contraseña incorrecta',

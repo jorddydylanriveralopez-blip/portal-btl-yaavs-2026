@@ -3,6 +3,13 @@ import type { Solicitud } from './types'
 const STORAGE_KEY = 'portal-btl-address-overrides-v1'
 export const ADDRESS_EDIT_PASSWORD = 'orlando01'
 
+/** Contraseñas válidas para eliminar / papelera (Orlando + Noemí). */
+export const DELETE_PASSWORDS = ['orlando01', 'Noemi2026'] as const
+
+export function isDeletePassword(password: string): boolean {
+  return (DELETE_PASSWORDS as readonly string[]).includes(password)
+}
+
 export type AddressOverride = {
   puntoDeVenta?: string
   estado?: string

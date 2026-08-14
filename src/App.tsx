@@ -11,6 +11,7 @@ import {
 } from './export'
 import {
   ADDRESS_EDIT_PASSWORD,
+  isDeletePassword,
   applyAddressOverride,
   applyAddressOverrides,
   getAddressOverride,
@@ -811,7 +812,7 @@ function DeleteConfirm({
   async function handleDelete(e: FormEvent) {
     e.preventDefault()
     setError('')
-    if (password !== ADDRESS_EDIT_PASSWORD) {
+    if (!isDeletePassword(password)) {
       setError('Contraseña incorrecta')
       return
     }
@@ -964,7 +965,7 @@ function TrashPanel({
     action: 'restore' | 'purge' | 'purge_all',
   ) {
     setError('')
-    if (password !== ADDRESS_EDIT_PASSWORD) {
+    if (!isDeletePassword(password)) {
       setError('Contraseña incorrecta')
       return
     }

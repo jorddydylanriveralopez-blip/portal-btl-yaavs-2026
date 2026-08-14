@@ -17,8 +17,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
   exit;
 }
 
-const DELETE_PASSWORD = 'orlando01';
+/** Contraseñas válidas para eliminar / papelera (Orlando + Noemí). */
+const DELETE_PASSWORDS = ['orlando01', 'Noemi2026'];
 const STORE_FILE = __DIR__ . '/deleted-solicitudes.json';
+
+function password_ok(string $password): bool {
+  return in_array($password, DELETE_PASSWORDS, true);
+}
 
 /**
  * @return array{ids: string[], items: array<string, array>}
@@ -157,7 +162,7 @@ $password = (string)($body['password'] ?? '');
 $id = trim((string)($body['id'] ?? ''));
 $action = strtolower(trim((string)($body['action'] ?? 'delete')));
 
-if ($password !== DELETE_PASSWORD) {
+if (!password_ok($password)) {
   http_response_code(403);
   echo json_encode([
     'ok' => false,

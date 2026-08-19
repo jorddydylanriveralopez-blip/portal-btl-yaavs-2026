@@ -28,6 +28,7 @@ import {
   snapshotFromSolicitud,
   type TrashItem,
 } from './deleted'
+import { fetchActivaIds, markAsTerminada, restoreToActivas } from './status'
 import {
   buildFormularioUrl,
   checkClaveYaavser,
@@ -60,8 +61,10 @@ function fechaKey(iso?: string): string {
   return iso.slice(0, 10)
 }
 
-/** Terminada si la fecha BTL ya pasó (es anterior a hoy). */
-function isTerminada(s: Solicitud): boolean {
+/** Terminada si la fecha BTL ya pasó, salvo que se haya restaurado a activas. */
+function isTerminada(s: Solicitud, activaIds: Iterable<string> = []): boolean {
+  const restored = activaIds instanceof Set ? activaIds : new Set(activaIds)
+  if (restored.has(s.id)) return false
   const d = fechaKey(s.fechaBtl)
   return !!d && d < todayKey()
 }
@@ -101,6 +104,9 @@ export default function App() {
   const [trashItems, setTrashItems] = useState<TrashItem[]>([])
   const [pendingDelete, setPendingDelete] = useState<Solicitud | null>(null)
   const [trashOpen, setTrashOpen] = useState(false)
+  const [activaIds, setActivaIds] = useState<string[]>([])
+
+  const activaSet = useMemo(() => new Set(activaIds), [activaIds])
 
   const applyTrashStore = (ids: string[], items: TrashItem[]) => {
     setDeletedIds(ids)
@@ -110,6 +116,10 @@ export default function App() {
   const refreshTrash = useCallback(async () => {
     const store = await fetchDeletedStore()
     applyTrashStore(store.ids, store.items)
+  }, [])
+
+  const refreshStatus = useCallback(async () => {
+    setActivaIds(await fetchActivaIds())
   }, [])
 
   const records = useMemo(
@@ -147,20 +157,22 @@ export default function App() {
 
   useEffect(() => {
     void refreshTrash()
-  }, [refreshTrash])
+    void refreshStatus()
+  }, [refreshTrash, refreshStatus])
 
   useEffect(() => {
     const id = window.setInterval(() => {
       void load(filters)
       void refreshTrash()
+      void refreshStatus()
     }, 60_000)
     return () => window.clearInterval(id)
-  }, [filters, load, refreshTrash])
+  }, [filters, load, refreshTrash, refreshStatus])
 
   const sorted = useMemo(() => {
     const list = [...records].filter((s) => {
-      if (statusFilter === 'terminadas') return isTerminada(s)
-      if (statusFilter === 'activas') return !isTerminada(s)
+      if (statusFilter === 'terminadas') return isTerminada(s, activaSet)
+      if (statusFilter === 'activas') return !isTerminada(s, activaSet)
       return true
     })
     list.sort((a, b) => {
@@ -178,19 +190,19 @@ export default function App() {
       return sort === 'fecha-asc' ? da.localeCompare(db) : db.localeCompare(da)
     })
     return list
-  }, [records, sort, statusFilter])
+  }, [records, sort, statusFilter, activaSet])
 
   const stats = useMemo(() => {
     const byFlujo: Record<string, number> = {}
     const withPhoto = records.filter((r) => (r.fotoExterior?.length || 0) > 0).length
-    const terminadas = records.filter(isTerminada).length
+    const terminadas = records.filter((s) => isTerminada(s, activaSet)).length
     const activas = records.length - terminadas
     for (const r of records) {
       const f = r.flujoDePersonas || 'Sin dato'
       byFlujo[f] = (byFlujo[f] || 0) + 1
     }
     return { byFlujo, withPhoto, terminadas, activas }
-  }, [records])
+  }, [records, activaSet])
 
   const estados = useMemo(() => {
     const set = new Set(records.map((r) => r.estado).filter(Boolean) as string[])
@@ -207,10 +219,10 @@ export default function App() {
   }, [records])
 
   const { activasList, terminadasList } = useMemo(() => {
-    const activasList = sorted.filter((s) => !isTerminada(s))
-    const terminadasList = sorted.filter(isTerminada)
+    const activasList = sorted.filter((s) => !isTerminada(s, activaSet))
+    const terminadasList = sorted.filter((s) => isTerminada(s, activaSet))
     return { activasList, terminadasList }
-  }, [sorted])
+  }, [sorted, activaSet])
 
   const patch = (partial: Partial<Filters>) =>
     setFilters((prev) => ({ ...prev, ...partial }))
@@ -219,6 +231,26 @@ export default function App() {
     if (!sorted.length) return
     downloadCsv(sorted)
     showToast(`CSV listo · ${sorted.length} solicitudes`)
+  }
+
+  const moveToActivas = async (s: Solicitud) => {
+    const result = await restoreToActivas(s.id)
+    if (!result.ok) {
+      showToast(result.message || 'No se pudo restaurar')
+      return
+    }
+    setActivaIds(result.activaIds)
+    showToast('Restaurada en activas')
+  }
+
+  const moveToTerminadas = async (s: Solicitud) => {
+    const result = await markAsTerminada(s.id)
+    if (!result.ok) {
+      showToast(result.message || 'No se pudo marcar como terminada')
+      return
+    }
+    setActivaIds(result.activaIds)
+    showToast('Movida a terminadas')
   }
 
   return (
@@ -467,9 +499,13 @@ export default function App() {
                     s={s}
                     i={i}
                     view={view}
+                    done={false}
+                    restored={activaSet.has(s.id)}
                     onOpen={() => setSelectedId(s.id)}
                     onToast={showToast}
                     onRequestDelete={() => setPendingDelete(s)}
+                    onRestore={() => void moveToActivas(s)}
+                    onMarkDone={() => void moveToTerminadas(s)}
                   />
                 ))}
               </ul>
@@ -489,9 +525,13 @@ export default function App() {
                     s={s}
                     i={i}
                     view={view}
+                    done
+                    restored={false}
                     onOpen={() => setSelectedId(s.id)}
                     onToast={showToast}
                     onRequestDelete={() => setPendingDelete(s)}
+                    onRestore={() => void moveToActivas(s)}
+                    onMarkDone={() => void moveToTerminadas(s)}
                   />
                 ))}
               </ul>
@@ -537,10 +577,14 @@ export default function App() {
       {selected && (
         <Detail
           solicitud={selected}
+          done={isTerminada(selected, activaSet)}
+          restored={activaSet.has(selected.id)}
           onClose={() => setSelectedId(null)}
           onToast={showToast}
           onAddressSaved={() => setOverrideTick((n) => n + 1)}
           onRequestDelete={() => setPendingDelete(selected)}
+          onRestore={() => void moveToActivas(selected)}
+          onMarkDone={() => void moveToTerminadas(selected)}
         />
       )}
 
@@ -707,18 +751,25 @@ function SolicitudCard({
   s,
   i,
   view,
+  done,
+  restored,
   onOpen,
   onToast,
   onRequestDelete,
+  onRestore,
+  onMarkDone,
 }: {
   s: Solicitud
   i: number
   view: 'grid' | 'list'
+  done: boolean
+  restored: boolean
   onOpen: () => void
   onToast: (msg: string) => void
   onRequestDelete: () => void
+  onRestore: () => void
+  onMarkDone: () => void
 }) {
-  const done = isTerminada(s)
   return (
     <li
       className={`item${done ? ' item-done' : ''}`}
@@ -769,6 +820,27 @@ function SolicitudCard({
         </button>
       </div>
       <div className="item-actions">
+        {done ? (
+          <button
+            type="button"
+            className="btn btn-restore"
+            onClick={() => {
+              onRestore()
+            }}
+          >
+            Restaurar
+          </button>
+        ) : restored ? (
+          <button
+            type="button"
+            className="btn btn-text"
+            onClick={() => {
+              onMarkDone()
+            }}
+          >
+            Terminar
+          </button>
+        ) : null}
         <button
           type="button"
           className="btn btn-soft"
@@ -1137,16 +1209,24 @@ function TrashPanel({
 
 function Detail({
   solicitud: s,
+  done,
+  restored,
   onClose,
   onToast,
   onAddressSaved,
   onRequestDelete,
+  onRestore,
+  onMarkDone,
 }: {
   solicitud: Solicitud
+  done: boolean
+  restored: boolean
   onClose: () => void
   onToast: (msg: string) => void
   onAddressSaved: () => void
   onRequestDelete: () => void
+  onRestore: () => void
+  onMarkDone: () => void
 }) {
   const [lightbox, setLightbox] = useState<number | null>(null)
   const [editingAddress, setEditingAddress] = useState(false)
@@ -1253,7 +1333,7 @@ function Detail({
           <div className="modal-hero-veil" />
           <div className="modal-hero-top">
             <div className="badge-stack">
-              {isTerminada(s) && <span className="badge badge-done">Terminada</span>}
+              {done && <span className="badge badge-done">Terminada</span>}
               <span className={flujoClass(s.flujoDePersonas)}>
                 {s.flujoDePersonas || 'Flujo'}
               </span>
@@ -1310,6 +1390,15 @@ function Detail({
             >
               Copiar tel.
             </button>
+            {done ? (
+              <button type="button" className="btn btn-restore" onClick={onRestore}>
+                Restaurar a activas
+              </button>
+            ) : restored ? (
+              <button type="button" className="btn btn-soft" onClick={onMarkDone}>
+                Marcar terminada
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn btn-danger"
@@ -1320,8 +1409,8 @@ function Detail({
           </div>
 
           <div className="chip-row">
-            {isTerminada(display) && <span className="chip chip-done">Terminada</span>}
-            {!isTerminada(display) && <span className="chip chip-active">Activa</span>}
+            {done && <span className="chip chip-done">Terminada</span>}
+            {!done && <span className="chip chip-active">Activa</span>}
             {display.estado && <span className="chip">{display.estado}</span>}
             {display.municipioAlcaldia && (
               <span className="chip">{display.municipioAlcaldia}</span>

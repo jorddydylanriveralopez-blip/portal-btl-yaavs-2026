@@ -39,6 +39,14 @@ jobs:
           }
           fs.writeFileSync('dist/deleted-solicitudes.json', JSON.stringify({ ids, items, updatedAt: new Date().toISOString() }, null, 2) + '\n');
           NODE
+          curl -fsSL "https://coral-oryx-137304.hostingersite.com/status-solicitud.php" -o /tmp/status-live.json || echo '{}' > /tmp/status-live.json
+          node <<'NODE'
+          const fs = require('fs');
+          let live = {};
+          try { live = JSON.parse(fs.readFileSync('/tmp/status-live.json','utf8')); } catch {}
+          const activaIds = Array.isArray(live.activaIds) ? live.activaIds.filter((id) => typeof id === 'string' && id) : [];
+          fs.writeFileSync('dist/status-solicitudes.json', JSON.stringify({ activaIds, updatedAt: new Date().toISOString() }, null, 2) + '\n');
+          NODE
           cd dist && zip -r ../portal-btl-deploy.zip .
           ls -lh ../portal-btl-deploy.zip
 

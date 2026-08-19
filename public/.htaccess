@@ -9,8 +9,17 @@ Options -Indexes
   RewriteRule . /index.html [L]
 </IfModule>
 
-# No servir el listado de eliminadas en crudo (solo vía PHP)
+# No servir el listado de eliminadas ni el de estatus en crudo (solo vía PHP)
 <Files "deleted-solicitudes.json">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</Files>
+<Files "status-solicitudes.json">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>

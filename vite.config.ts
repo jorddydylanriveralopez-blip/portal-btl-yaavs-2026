@@ -7,6 +7,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 const DELETED_STORE = path.join(rootDir, 'public', 'deleted-solicitudes.json')
+const STATUS_STORE = path.join(rootDir, 'public', 'status-solicitudes.json')
 const DELETE_PASSWORDS = new Set(['orlando01', 'Noemi2026'])
 
 type ConnectNext = () => void
@@ -93,6 +94,29 @@ function readDeletedIds(): string[] {
   return readDeletedStore().ids
 }
 
+function readActivaIds(): string[] {
+  try {
+    if (!fs.existsSync(STATUS_STORE)) return []
+    const raw = fs.readFileSync(STATUS_STORE, 'utf8')
+    const data = JSON.parse(raw) as { activaIds?: unknown }
+    return Array.isArray(data.activaIds)
+      ? [...new Set(data.activaIds.filter((id): id is string => typeof id === 'string' && id !== ''))]
+      : []
+  } catch {
+    return []
+  }
+}
+
+function writeActivaIds(ids: string[]): string[] {
+  const unique = [...new Set(ids)]
+  fs.writeFileSync(
+    STATUS_STORE,
+    `${JSON.stringify({ activaIds: unique, updatedAt: new Date().toISOString() }, null, 2)}\n`,
+    'utf8',
+  )
+  return unique
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -163,6 +187,59 @@ function localApiPlugin(): Plugin {
         res.statusCode = 502
         res.end('Error de proxy')
       }
+      return
+    }
+
+    if (rawUrl.startsWith('/status-solicitud.php')) {
+      if (req.method === 'OPTIONS') {
+        res.statusCode = 204
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept')
+        res.end()
+        return
+      }
+      if (req.method === 'GET') {
+        sendJson(res, 200, { ok: true, activaIds: readActivaIds() })
+        return
+      }
+      if (req.method === 'POST') {
+        try {
+          const raw = await readBody(req)
+          const body = JSON.parse(raw || '{}') as { id?: string; action?: string }
+          const id = (body.id || '').trim()
+          const action = (body.action || 'activa').toLowerCase()
+          if (!id) {
+            sendJson(res, 400, {
+              ok: false,
+              message: 'Falta el id de la solicitud',
+              activaIds: [],
+            })
+            return
+          }
+          let ids = readActivaIds()
+          let message = 'Restaurada en activas'
+          if (action === 'terminada') {
+            ids = ids.filter((x) => x !== id)
+            message = 'Movida a terminadas'
+          } else if (!ids.includes(id)) {
+            ids.push(id)
+          }
+          sendJson(res, 200, {
+            ok: true,
+            activaIds: writeActivaIds(ids),
+            message,
+          })
+        } catch {
+          sendJson(res, 500, {
+            ok: false,
+            message: 'Error al guardar el estatus',
+            activaIds: [],
+          })
+        }
+        return
+      }
+      sendJson(res, 405, { ok: false, message: 'Método no permitido' })
       return
     }
 

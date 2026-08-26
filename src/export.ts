@@ -1,4 +1,5 @@
 import type { FileAsset, Solicitud } from './types'
+import type { TableroRow } from './tablero'
 
 const COLUMNS: { key: keyof Solicitud | 'fotos' | 'evidencias'; label: string }[] = [
   { key: 'id', label: 'ID' },
@@ -154,6 +155,59 @@ export function downloadCsv(records: Solicitud[], filename?: string) {
   downloadTextFile(
     filename || `solicitudes-btl-yaavs-${stamp}.csv`,
     solicitudesToCsv(records),
+    'text/csv;charset=utf-8',
+  )
+}
+
+export function tableroToCsv(rows: TableroRow[]): string {
+  const header = [
+    'NO',
+    'FECHA',
+    'ESTADO',
+    'MUNICIPIO/ALCALDIA',
+    'PDV',
+    'CLAVE YAAVSER',
+    'NOMBRE DEL YAAV',
+    'HORAS',
+    'FLUJO',
+    'ESTATUS',
+    'PORTABILIDA',
+    'RECARGAS',
+    'POSPAG',
+    'e-SIM',
+    'SIM - LÍNEA NUEVA',
+  ]
+    .map(escapeCsv)
+    .join(',')
+  const body = rows.map((r) =>
+    [
+      r.no,
+      r.fecha,
+      r.estado,
+      r.municipio,
+      r.pdv,
+      r.clave,
+      r.nombre,
+      r.horas,
+      r.flujo,
+      r.estatus,
+      r.metrics.portabilidad,
+      r.metrics.recargas,
+      r.metrics.pospago,
+      r.metrics.esim,
+      r.metrics.sim,
+    ]
+      .map((v) => escapeCsv(String(v ?? '')))
+      .join(','),
+  )
+  return [header, ...body].join('\r\n')
+}
+
+export function downloadTableroCsv(rows: TableroRow[], filename?: string) {
+  const stamp = new Date().toISOString().slice(0, 10)
+  downloadTextFile(
+    filename || `ACTIVACION_BTL_${stamp}.csv`,
+    tableroToCsv(rows),
     'text/csv;charset=utf-8',
   )
 }

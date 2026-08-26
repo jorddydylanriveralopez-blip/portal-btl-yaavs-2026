@@ -349,6 +349,28 @@ function localApiPlugin(): Plugin {
       return
     }
 
+    if (rawUrl.startsWith('/reporte-proxy.php')) {
+      try {
+        const upstream = await fetch(
+          'https://lightslategrey-deer-478072.hostingersite.com/api/responses',
+          { headers: { Accept: 'application/json' } },
+        )
+        if (!upstream.ok) {
+          sendJson(res, 502, { ok: false, error: 'No se pudieron obtener los reportes BTL' })
+          return
+        }
+        const data = await upstream.text()
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'application/json; charset=utf-8')
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.setHeader('Cache-Control', 'no-store')
+        res.end(data)
+      } catch {
+        sendJson(res, 502, { ok: false, error: 'Error al consultar reportes BTL' })
+      }
+      return
+    }
+
     if (rawUrl.startsWith('/check-clave.php')) {
       try {
         const parsed = new URL(rawUrl, 'http://localhost')

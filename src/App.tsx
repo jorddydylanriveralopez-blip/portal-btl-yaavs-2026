@@ -29,6 +29,9 @@ import {
   type TrashItem,
 } from './deleted'
 import { fetchActivaIds, markAsTerminada, restoreToActivas } from './status'
+import { fetchReporteResponses } from './reporteApi'
+import TableroActivacionView from './TableroActivacionView'
+import type { ReporteEntry } from './tablero'
 import {
   buildFormularioUrl,
   checkClaveYaavser,
@@ -47,6 +50,7 @@ const EMPTY_FILTERS: Filters = {
 
 type SortKey = 'fecha-desc' | 'fecha-asc' | 'nombre' | 'estado'
 type StatusFilter = 'todas' | 'activas' | 'terminadas'
+type PageMode = 'solicitudes' | 'tablero'
 
 function todayKey(): string {
   const d = new Date()
@@ -105,6 +109,10 @@ export default function App() {
   const [pendingDelete, setPendingDelete] = useState<Solicitud | null>(null)
   const [trashOpen, setTrashOpen] = useState(false)
   const [activaIds, setActivaIds] = useState<string[]>([])
+  const [pageMode, setPageMode] = useState<PageMode>('solicitudes')
+  const [reportes, setReportes] = useState<ReporteEntry[]>([])
+  const [reportesLoading, setReportesLoading] = useState(false)
+  const [reportesError, setReportesError] = useState<string | null>(null)
 
   const activaSet = useMemo(() => new Set(activaIds), [activaIds])
 
@@ -151,6 +159,21 @@ export default function App() {
     }
   }, [])
 
+  const loadReportes = useCallback(async () => {
+    setReportesLoading(true)
+    setReportesError(null)
+    try {
+      setReportes(await fetchReporteResponses())
+    } catch (e) {
+      setReportes([])
+      setReportesError(
+        e instanceof Error ? e.message : 'No se pudieron cargar los reportes BTL',
+      )
+    } finally {
+      setReportesLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     void load(debounced)
   }, [debounced, load])
@@ -161,13 +184,18 @@ export default function App() {
   }, [refreshTrash, refreshStatus])
 
   useEffect(() => {
+    if (pageMode === 'tablero') void loadReportes()
+  }, [pageMode, loadReportes])
+
+  useEffect(() => {
     const id = window.setInterval(() => {
       void load(filters)
       void refreshTrash()
       void refreshStatus()
+      if (pageMode === 'tablero') void loadReportes()
     }, 60_000)
     return () => window.clearInterval(id)
-  }, [filters, load, refreshTrash, refreshStatus])
+  }, [filters, load, refreshTrash, refreshStatus, pageMode, loadReportes])
 
   const sorted = useMemo(() => {
     const list = [...records].filter((s) => {
@@ -271,14 +299,38 @@ export default function App() {
             />
             <div className="brand-copy">
               <p className="eyebrow">Portal BTL 2026</p>
-              <h1 className="brand-title">Solicitudes BTL</h1>
+              <h1 className="brand-title">
+                {pageMode === 'tablero' ? 'Tablero ACTIVACION BTL' : 'Solicitudes BTL'}
+              </h1>
               <p className="lede">
-                Consulta, filtra y descarga las solicitudes que van llegando.
+                {pageMode === 'tablero'
+                  ? 'Solicitudes cruzadas con reportes comerciales del Formulario 7.'
+                  : 'Consulta, filtra y descarga las solicitudes que van llegando.'}
               </p>
             </div>
           </div>
 
           <div className="masthead-actions">
+            <div className="page-seg" role="tablist" aria-label="Vista del portal">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={pageMode === 'solicitudes'}
+                className={pageMode === 'solicitudes' ? 'on' : ''}
+                onClick={() => setPageMode('solicitudes')}
+              >
+                Solicitudes
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={pageMode === 'tablero'}
+                className={pageMode === 'tablero' ? 'on' : ''}
+                onClick={() => setPageMode('tablero')}
+              >
+                Tablero BTL
+              </button>
+            </div>
             <div className="live-chip" aria-live="polite">
               <span className="live-dot" />
               <strong>{records.length}</strong>
@@ -305,29 +357,36 @@ export default function App() {
               type="button"
               className="btn btn-quiet"
               disabled={loading}
-              onClick={() => void load(filters)}
+              onClick={() => {
+                void load(filters)
+                if (pageMode === 'tablero') void loadReportes()
+              }}
             >
               Actualizar
             </button>
-            <button
-              type="button"
-              className="btn btn-quiet"
-              disabled={!sorted.length}
-              onClick={() => {
-                downloadJson(sorted)
-                showToast('JSON descargado')
-              }}
-            >
-              JSON
-            </button>
-            <button
-              type="button"
-              className="btn btn-solid"
-              disabled={!sorted.length}
-              onClick={exportAll}
-            >
-              Descargar Excel
-            </button>
+            {pageMode === 'solicitudes' && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-quiet"
+                  disabled={!sorted.length}
+                  onClick={() => {
+                    downloadJson(sorted)
+                    showToast('JSON descargado')
+                  }}
+                >
+                  JSON
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-solid"
+                  disabled={!sorted.length}
+                  onClick={exportAll}
+                >
+                  Descargar Excel
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -338,18 +397,27 @@ export default function App() {
             <span>Total</span>
             <strong>{records.length}</strong>
           </div>
-          <div className="metric">
-            <span>Activas</span>
-            <strong>{stats.activas}</strong>
-          </div>
-          <div className="metric">
-            <span>Terminadas</span>
-            <strong>{stats.terminadas}</strong>
-          </div>
-          <div className="metric">
-            <span>Con foto</span>
-            <strong>{stats.withPhoto}</strong>
-          </div>
+          {pageMode === 'solicitudes' ? (
+            <>
+              <div className="metric">
+                <span>Activas</span>
+                <strong>{stats.activas}</strong>
+              </div>
+              <div className="metric">
+                <span>Terminadas</span>
+                <strong>{stats.terminadas}</strong>
+              </div>
+              <div className="metric">
+                <span>Con foto</span>
+                <strong>{stats.withPhoto}</strong>
+              </div>
+            </>
+          ) : (
+            <div className="metric">
+              <span>Reportes BTL</span>
+              <strong>{reportes.length}</strong>
+            </div>
+          )}
           <div className="metric">
             <span>Viendo</span>
             <strong>{sorted.length}</strong>
@@ -468,6 +536,16 @@ export default function App() {
         </section>
 
         <main className="main">
+          {pageMode === 'tablero' ? (
+            <TableroActivacionView
+              solicitudes={sorted}
+              reportes={reportes}
+              loading={reportesLoading}
+              error={reportesError}
+              onRetry={() => void loadReportes()}
+            />
+          ) : (
+            <>
           {loading && <p className="status">Cargando solicitudes…</p>}
           {error && (
             <p className="status error">
@@ -536,6 +614,8 @@ export default function App() {
                 ))}
               </ul>
             </section>
+          )}
+            </>
           )}
         </main>
 

@@ -540,6 +540,7 @@ export default function App() {
             <TableroActivacionView
               solicitudes={sorted}
               reportes={reportes}
+              activaIds={activaIds}
               loading={reportesLoading}
               error={reportesError}
               onRetry={() => void loadReportes()}

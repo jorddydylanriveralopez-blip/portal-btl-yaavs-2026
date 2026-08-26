@@ -12,6 +12,7 @@ import type { Solicitud } from './types'
 type Props = {
   solicitudes: Solicitud[]
   reportes: ReporteEntry[]
+  activaIds: string[]
   loading: boolean
   error: string | null
   onRetry: () => void
@@ -23,20 +24,21 @@ function cell(v: number | string | '') {
 
 function estatusClass(row: TableroRow): string {
   if (row.estatus === 'PROGRAMADA') return 'tablero-estatus tablero-estatus-programada'
-  if (!row.tieneReporte) return 'tablero-estatus tablero-estatus-sin-reporte'
-  return 'tablero-estatus tablero-estatus-ok'
+  if (row.estatus === 'REAGENDADA') return 'tablero-estatus tablero-estatus-reagendada'
+  return 'tablero-estatus tablero-estatus-realizada'
 }
 
 export default function TableroActivacionView({
   solicitudes,
   reportes,
+  activaIds,
   loading,
   error,
   onRetry,
 }: Props) {
   const rows = useMemo(
-    () => buildTableroRows(solicitudes, reportes),
-    [solicitudes, reportes],
+    () => buildTableroRows(solicitudes, reportes, activaIds),
+    [solicitudes, reportes, activaIds],
   )
   const totals = useMemo(() => sumTableroMetrics(rows), [rows])
 

@@ -18,7 +18,7 @@ export type TableroRow = {
   nombre: string
   horas: string
   flujo: string
-  estatus: 'REALIZADA' | 'PROGRAMADA'
+  estatus: 'REALIZADA' | 'PROGRAMADA' | 'REAGENDADA'
   metrics: TableroMetrics
   tieneReporte: boolean
   solicitudId: string
@@ -151,10 +151,18 @@ export function findReportForSolicitud(
   return bestScore >= 60 ? best : null
 }
 
+function isReagendada(sol: Solicitud, activaIds: Set<string>): boolean {
+  if (activaIds.has(sol.id)) return true
+  const obs = String(sol.observaciones || '').toLowerCase()
+  return obs.includes('reagend')
+}
+
 export function buildTableroRows(
   solicitudes: Solicitud[],
   rawList: ReporteEntry[],
+  activaIds: Iterable<string> = [],
 ): TableroRow[] {
+  const restored = activaIds instanceof Set ? activaIds : new Set(activaIds)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
@@ -171,7 +179,8 @@ export function buildTableroRows(
     const horas = horasFromReport(answers) || '5'
     const fechaBtl = sol.fechaBtl ? new Date(`${sol.fechaBtl.slice(0, 10)}T12:00:00`) : null
     let estatus: TableroRow['estatus'] = 'PROGRAMADA'
-    if (report) estatus = 'REALIZADA'
+    if (isReagendada(sol, restored)) estatus = 'REAGENDADA'
+    else if (report) estatus = 'REALIZADA'
     else if (fechaBtl && fechaBtl < today) estatus = 'REALIZADA'
 
     const flujo = String(sol.flujoDePersonas || 'MEDIO').toUpperCase()

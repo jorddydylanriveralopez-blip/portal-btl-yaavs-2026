@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { getSolicitudes } from './api'
 import {
   downloadCsv,
@@ -33,12 +33,26 @@ import { fetchReporteResponses } from './reporteApi'
 import TableroActivacionView from './TableroActivacionView'
 import type { ReporteEntry } from './tablero'
 import {
+  fetchTableroMeta,
+  saveTableroMeta,
+  type TableroEstatusManual,
+  type TableroMetaMap,
+  type TableroMetaRow,
+} from './tableroMeta'
+import {
   buildFormularioUrl,
   checkClaveYaavser,
   normalizeClave,
 } from './clave'
 import type { Filters, Solicitud } from './types'
 import './App.css'
+
+const CARD_ESTATUS_OPTIONS: TableroEstatusManual[] = [
+  'REALIZADA',
+  'PROGRAMADA',
+  'CANCELADA',
+  'REAGENDADA',
+]
 
 const EMPTY_FILTERS: Filters = {
   search: '',
@@ -113,6 +127,10 @@ export default function App() {
   const [reportes, setReportes] = useState<ReporteEntry[]>([])
   const [reportesLoading, setReportesLoading] = useState(false)
   const [reportesError, setReportesError] = useState<string | null>(null)
+  const [tableroRaw, setTableroRaw] = useState<Solicitud[]>([])
+  const [tableroLoading, setTableroLoading] = useState(false)
+  const [tableroError, setTableroError] = useState<string | null>(null)
+  const [tableroMeta, setTableroMeta] = useState<TableroMetaMap>({})
 
   const activaSet = useMemo(() => new Set(activaIds), [activaIds])
 
@@ -130,6 +148,10 @@ export default function App() {
     setActivaIds(await fetchActivaIds())
   }, [])
 
+  const refreshTableroMeta = useCallback(async () => {
+    setTableroMeta(await fetchTableroMeta())
+  }, [])
+
   const records = useMemo(
     () => filterDeleted(applyAddressOverrides(rawRecords), deletedIds),
     [rawRecords, overrideTick, deletedIds],
@@ -143,6 +165,26 @@ export default function App() {
     setToast(msg)
     window.setTimeout(() => setToast(null), 2200)
   }
+
+  const patchTableroMeta = useCallback(async (id: string, patch: TableroMetaRow) => {
+    let snapshot: TableroMetaMap = {}
+    setTableroMeta((m) => {
+      snapshot = m
+      return {
+        ...m,
+        [id]: { ...(m[id] || {}), ...patch },
+      }
+    })
+    const result = await saveTableroMeta(id, patch)
+    if (!result.ok) {
+      setTableroMeta(snapshot)
+      setToast(result.message || 'No se pudo guardar el estatus')
+      window.setTimeout(() => setToast(null), 2200)
+      return false
+    }
+    setTableroMeta(result.rows)
+    return true
+  }, [])
 
   const load = useCallback(async (f: Filters) => {
     setLoading(true)
@@ -174,6 +216,27 @@ export default function App() {
     }
   }, [])
 
+  const loadTableroSolicitudes = useCallback(async () => {
+    setTableroLoading(true)
+    setTableroError(null)
+    try {
+      const data = await getSolicitudes(EMPTY_FILTERS)
+      setTableroRaw(data.records || [])
+    } catch (e) {
+      setTableroRaw([])
+      setTableroError(
+        e instanceof Error ? e.message : 'No se pudieron cargar las solicitudes del tablero',
+      )
+    } finally {
+      setTableroLoading(false)
+    }
+  }, [])
+
+  const tableroRecords = useMemo(
+    () => filterDeleted(applyAddressOverrides(tableroRaw), deletedIds),
+    [tableroRaw, overrideTick, deletedIds],
+  )
+
   useEffect(() => {
     void load(debounced)
   }, [debounced, load])
@@ -181,21 +244,38 @@ export default function App() {
   useEffect(() => {
     void refreshTrash()
     void refreshStatus()
-  }, [refreshTrash, refreshStatus])
+    void refreshTableroMeta()
+  }, [refreshTrash, refreshStatus, refreshTableroMeta])
 
   useEffect(() => {
-    if (pageMode === 'tablero') void loadReportes()
-  }, [pageMode, loadReportes])
+    if (pageMode === 'tablero') {
+      void loadReportes()
+      void loadTableroSolicitudes()
+    }
+  }, [pageMode, loadReportes, loadTableroSolicitudes])
 
   useEffect(() => {
     const id = window.setInterval(() => {
       void load(filters)
       void refreshTrash()
       void refreshStatus()
-      if (pageMode === 'tablero') void loadReportes()
+      void refreshTableroMeta()
+      if (pageMode === 'tablero') {
+        void loadReportes()
+        void loadTableroSolicitudes()
+      }
     }, 60_000)
     return () => window.clearInterval(id)
-  }, [filters, load, refreshTrash, refreshStatus, pageMode, loadReportes])
+  }, [
+    filters,
+    load,
+    refreshTrash,
+    refreshStatus,
+    refreshTableroMeta,
+    pageMode,
+    loadReportes,
+    loadTableroSolicitudes,
+  ])
 
   const sorted = useMemo(() => {
     const list = [...records].filter((s) => {
@@ -359,7 +439,10 @@ export default function App() {
               disabled={loading}
               onClick={() => {
                 void load(filters)
-                if (pageMode === 'tablero') void loadReportes()
+                if (pageMode === 'tablero') {
+                  void loadReportes()
+                  void loadTableroSolicitudes()
+                }
               }}
             >
               Actualizar
@@ -538,12 +621,15 @@ export default function App() {
         <main className="main">
           {pageMode === 'tablero' ? (
             <TableroActivacionView
-              solicitudes={sorted}
+              solicitudes={tableroRecords}
               reportes={reportes}
               activaIds={activaIds}
-              loading={reportesLoading}
-              error={reportesError}
-              onRetry={() => void loadReportes()}
+              loading={reportesLoading || tableroLoading}
+              error={reportesError || tableroError}
+              onRetry={() => {
+                void loadReportes()
+                void loadTableroSolicitudes()
+              }}
             />
           ) : (
             <>
@@ -580,11 +666,13 @@ export default function App() {
                     view={view}
                     done={false}
                     restored={activaSet.has(s.id)}
+                    meta={tableroMeta[s.id]}
                     onOpen={() => setSelectedId(s.id)}
                     onToast={showToast}
                     onRequestDelete={() => setPendingDelete(s)}
                     onRestore={() => void moveToActivas(s)}
                     onMarkDone={() => void moveToTerminadas(s)}
+                    onMetaPatch={(patch) => void patchTableroMeta(s.id, patch)}
                   />
                 ))}
               </ul>
@@ -606,11 +694,13 @@ export default function App() {
                     view={view}
                     done
                     restored={false}
+                    meta={tableroMeta[s.id]}
                     onOpen={() => setSelectedId(s.id)}
                     onToast={showToast}
                     onRequestDelete={() => setPendingDelete(s)}
                     onRestore={() => void moveToActivas(s)}
                     onMarkDone={() => void moveToTerminadas(s)}
+                    onMetaPatch={(patch) => void patchTableroMeta(s.id, patch)}
                   />
                 ))}
               </ul>
@@ -828,29 +918,125 @@ function NewRequestGate({
   )
 }
 
+function resolveCardEstatus(
+  done: boolean,
+  restored: boolean,
+  meta?: TableroMetaRow,
+): TableroEstatusManual {
+  if (meta?.estatus) return meta.estatus
+  if (meta?.fechaReagendada) return 'REAGENDADA'
+  if (restored) return 'REAGENDADA'
+  if (done) return 'REALIZADA'
+  return 'PROGRAMADA'
+}
+
+function cardEstatusTone(estatus: TableroEstatusManual): string {
+  if (estatus === 'REALIZADA') return 'estatus-tone-realizada'
+  if (estatus === 'PROGRAMADA') return 'estatus-tone-programada'
+  if (estatus === 'CANCELADA') return 'estatus-tone-cancelada'
+  return 'estatus-tone-reagendada'
+}
+
+const WEEKDAY_LABELS = ['D', 'L', 'M', 'M', 'J', 'V', 'S']
+
+function parseIsoDateLocal(iso: string): Date | null {
+  if (!iso) return null
+  const parts = iso.split('-').map(Number)
+  const [y, m, d] = parts
+  if (!y || !m || !d) return null
+  const parsed = new Date(y, m - 1, d)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function toIsoDateLocal(d: Date): string {
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function buildCalendarMatrix(year: number, month: number): Date[] {
+  const firstOfMonth = new Date(year, month, 1)
+  const start = new Date(year, month, 1 - firstOfMonth.getDay())
+  return Array.from(
+    { length: 42 },
+    (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i),
+  )
+}
+
 function SolicitudCard({
   s,
   i,
   view,
   done,
   restored,
+  meta,
   onOpen,
   onToast,
   onRequestDelete,
   onRestore,
   onMarkDone,
+  onMetaPatch,
 }: {
   s: Solicitud
   i: number
   view: 'grid' | 'list'
   done: boolean
   restored: boolean
+  meta?: TableroMetaRow
   onOpen: () => void
   onToast: (msg: string) => void
   onRequestDelete: () => void
   onRestore: () => void
   onMarkDone: () => void
+  onMetaPatch: (patch: TableroMetaRow) => void
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [dateMenuOpen, setDateMenuOpen] = useState(false)
+  const dateMenuRef = useRef<HTMLDivElement | null>(null)
+  const estatus = resolveCardEstatus(done, restored, meta)
+  const fechaReagendada = meta?.fechaReagendada || ''
+  const selectedDate = parseIsoDateLocal(fechaReagendada)
+  const [viewDate, setViewDate] = useState<Date>(() => selectedDate || new Date())
+
+  useEffect(() => {
+    if (dateMenuOpen) setViewDate(parseIsoDateLocal(fechaReagendada) || new Date())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateMenuOpen])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
+
+  useEffect(() => {
+    if (!dateMenuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!dateMenuRef.current?.contains(e.target as Node)) setDateMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDateMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [dateMenuOpen])
+
   return (
     <li
       className={`item${done ? ' item-done' : ''}`}
@@ -900,48 +1086,196 @@ function SolicitudCard({
           </div>
         </button>
       </div>
-      <div className="item-actions">
-        {done ? (
+      <div className="item-footer">
+        <div className="item-status-row">
+          <div className="estatus-menu" ref={menuRef}>
+            <button
+              type="button"
+              className={`estatus-trigger ${cardEstatusTone(estatus)}${menuOpen ? ' open' : ''}`}
+              aria-haspopup="listbox"
+              aria-expanded={menuOpen}
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenuOpen((v) => !v)
+              }}
+            >
+              <span className="estatus-dot" aria-hidden />
+              <span className="estatus-label">{estatus}</span>
+              <svg className="estatus-caret" viewBox="0 0 12 12" aria-hidden>
+                <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {menuOpen && (
+              <ul className="estatus-dropdown" role="listbox" aria-label="Estatus">
+                {CARD_ESTATUS_OPTIONS.map((opt) => (
+                  <li key={opt} role="option" aria-selected={opt === estatus}>
+                    <button
+                      type="button"
+                      className={opt === estatus ? 'on' : ''}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setMenuOpen(false)
+                        if (opt === estatus) return
+                        onMetaPatch({ estatus: opt })
+                        onToast(`Estatus: ${opt}`)
+                      }}
+                    >
+                      <span className="estatus-check" aria-hidden>
+                        {opt === estatus ? '✓' : ''}
+                      </span>
+                      <span>{opt}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="reagenda-chip-wrap" ref={dateMenuRef}>
+            <div
+              className={`reagenda-chip${fechaReagendada ? ' has-date' : ''}`}
+              title="Fecha reagendada"
+              onClick={(e) => {
+                e.stopPropagation()
+                setDateMenuOpen((v) => !v)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setDateMenuOpen((v) => !v)
+                }
+              }}
+              role="button"
+              aria-haspopup="dialog"
+              aria-expanded={dateMenuOpen}
+              tabIndex={0}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden>
+                <rect x="2" y="3.5" width="12" height="10.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M2 6.5h12M5.2 2v3M10.8 2v3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+              <span className="reagenda-copy">
+                <em>Reagendada</em>
+                <strong>{fechaReagendada ? formatFecha(fechaReagendada) : 'Elegir fecha'}</strong>
+              </span>
+            </div>
+            {dateMenuOpen && (
+              <div
+                className="reagenda-popover"
+                role="dialog"
+                aria-label={`Elegir fecha reagendada de ${s.puntoDeVenta || s.nombreYaavser || 'solicitud'}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="reagenda-cal-header">
+                  <button
+                    type="button"
+                    aria-label="Mes anterior"
+                    onClick={() =>
+                      setViewDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))
+                    }
+                  >
+                    ‹
+                  </button>
+                  <span>
+                    {viewDate.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Mes siguiente"
+                    onClick={() =>
+                      setViewDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))
+                    }
+                  >
+                    ›
+                  </button>
+                </div>
+                <div className="reagenda-cal-weekdays">
+                  {WEEKDAY_LABELS.map((label, idx) => (
+                    <span key={idx}>{label}</span>
+                  ))}
+                </div>
+                <div className="reagenda-cal-grid">
+                  {buildCalendarMatrix(viewDate.getFullYear(), viewDate.getMonth()).map((day) => {
+                    const iso = toIsoDateLocal(day)
+                    const inMonth = day.getMonth() === viewDate.getMonth()
+                    const isSelected = fechaReagendada === iso
+                    return (
+                      <button
+                        key={iso}
+                        type="button"
+                        className={`reagenda-cal-day${inMonth ? '' : ' is-outside'}${isSelected ? ' is-selected' : ''}`}
+                        onClick={() => {
+                          setDateMenuOpen(false)
+                          void onMetaPatch({ fechaReagendada: iso, estatus: 'REAGENDADA' as const })
+                          onToast(`Reagendada: ${formatFecha(iso)}`)
+                        }}
+                      >
+                        {day.getDate()}
+                      </button>
+                    )
+                  })}
+                </div>
+                {fechaReagendada && (
+                  <button
+                    type="button"
+                    className="reagenda-cal-clear"
+                    onClick={() => {
+                      setDateMenuOpen(false)
+                      void onMetaPatch({ fechaReagendada: '' })
+                      onToast('Fecha reagendada quitada')
+                    }}
+                  >
+                    Quitar fecha
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="item-actions">
+          {done ? (
+            <button
+              type="button"
+              className="btn btn-restore"
+              onClick={() => {
+                onRestore()
+              }}
+            >
+              Restaurar
+            </button>
+          ) : restored ? (
+            <button
+              type="button"
+              className="btn btn-text"
+              onClick={() => {
+                onMarkDone()
+              }}
+            >
+              Terminar
+            </button>
+          ) : null}
           <button
             type="button"
-            className="btn btn-restore"
+            className="btn btn-soft"
             onClick={() => {
-              onRestore()
+              downloadSolicitud(s)
+              onToast('Solicitud descargada')
             }}
           >
-            Restaurar
+            Descargar
           </button>
-        ) : restored ? (
           <button
             type="button"
             className="btn btn-text"
             onClick={() => {
-              onMarkDone()
+              downloadCsv([s], `solicitud-${s.claveYaavser || s.id}.csv`)
+              onToast('CSV listo')
             }}
           >
-            Terminar
+            CSV
           </button>
-        ) : null}
-        <button
-          type="button"
-          className="btn btn-soft"
-          onClick={() => {
-            downloadSolicitud(s)
-            onToast('Solicitud descargada')
-          }}
-        >
-          Descargar
-        </button>
-        <button
-          type="button"
-          className="btn btn-text"
-          onClick={() => {
-            downloadCsv([s], `solicitud-${s.claveYaavser || s.id}.csv`)
-            onToast('CSV listo')
-          }}
-        >
-          CSV
-        </button>
+        </div>
       </div>
     </li>
   )

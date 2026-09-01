@@ -8,7 +8,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 const DELETED_STORE = path.join(rootDir, 'public', 'deleted-solicitudes.json')
 const STATUS_STORE = path.join(rootDir, 'public', 'status-solicitudes.json')
+const TABLERO_META_STORE = path.join(rootDir, 'public', 'tablero-meta.json')
 const DELETE_PASSWORDS = new Set(['orlando01', 'Noemi2026'])
+const TABLERO_ESTATUS = new Set(['REALIZADA', 'PROGRAMADA', 'CANCELADA', 'REAGENDADA'])
 
 type ConnectNext = () => void
 
@@ -117,6 +119,32 @@ function writeActivaIds(ids: string[]): string[] {
   return unique
 }
 
+type TableroMetaRow = {
+  estatus?: string
+  fechaReagendada?: string
+  comentario?: string
+}
+
+function readTableroMeta(): Record<string, TableroMetaRow> {
+  try {
+    if (!fs.existsSync(TABLERO_META_STORE)) return {}
+    const raw = fs.readFileSync(TABLERO_META_STORE, 'utf8')
+    const data = JSON.parse(raw) as { rows?: Record<string, TableroMetaRow> }
+    return data.rows && typeof data.rows === 'object' ? data.rows : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeTableroMeta(rows: Record<string, TableroMetaRow>) {
+  fs.writeFileSync(
+    TABLERO_META_STORE,
+    `${JSON.stringify({ rows, updatedAt: new Date().toISOString() }, null, 2)}\n`,
+    'utf8',
+  )
+  return rows
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -187,6 +215,90 @@ function localApiPlugin(): Plugin {
         res.statusCode = 502
         res.end('Error de proxy')
       }
+      return
+    }
+
+    if (rawUrl.startsWith('/tablero-meta.php')) {
+      if (req.method === 'OPTIONS') {
+        res.statusCode = 204
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept')
+        res.end()
+        return
+      }
+      if (req.method === 'GET') {
+        sendJson(res, 200, { ok: true, rows: readTableroMeta() })
+        return
+      }
+      if (req.method === 'POST') {
+        try {
+          const raw = await readBody(req)
+          const body = JSON.parse(raw || '{}') as {
+            id?: string
+            estatus?: string
+            fechaReagendada?: string
+            comentario?: string
+          }
+          const id = (body.id || '').trim()
+          if (!id) {
+            sendJson(res, 400, {
+              ok: false,
+              message: 'Falta el id de la solicitud',
+              rows: {},
+            })
+            return
+          }
+          const rows = { ...readTableroMeta() }
+          const current: TableroMetaRow = { ...(rows[id] || {}) }
+          if ('estatus' in body) {
+            const estatus = String(body.estatus || '').trim().toUpperCase()
+            if (!estatus) delete current.estatus
+            else if (TABLERO_ESTATUS.has(estatus)) current.estatus = estatus
+            else {
+              sendJson(res, 400, {
+                ok: false,
+                message: 'Estatus no válido',
+                rows,
+              })
+              return
+            }
+          }
+          if ('fechaReagendada' in body) {
+            const fecha = String(body.fechaReagendada || '').trim()
+            if (!fecha) delete current.fechaReagendada
+            else if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) current.fechaReagendada = fecha
+            else {
+              sendJson(res, 400, {
+                ok: false,
+                message: 'Fecha reagendada inválida',
+                rows,
+              })
+              return
+            }
+          }
+          if ('comentario' in body) {
+            const comentario = String(body.comentario || '').trim().slice(0, 500)
+            if (!comentario) delete current.comentario
+            else current.comentario = comentario
+          }
+          if (Object.keys(current).length) rows[id] = current
+          else delete rows[id]
+          sendJson(res, 200, {
+            ok: true,
+            rows: writeTableroMeta(rows),
+            message: 'Guardado',
+          })
+        } catch {
+          sendJson(res, 500, {
+            ok: false,
+            message: 'Error al guardar metadatos del tablero',
+            rows: {},
+          })
+        }
+        return
+      }
+      sendJson(res, 405, { ok: false, message: 'Método no permitido' })
       return
     }
 

@@ -1,4 +1,5 @@
 import type { Solicitud } from './types'
+import type { TableroMetaMap } from './tableroMeta'
 
 export type TableroMetrics = {
   portabilidad: number | ''
@@ -7,6 +8,12 @@ export type TableroMetrics = {
   esim: number | ''
   sim: number | ''
 }
+
+export type TableroEstatus =
+  | 'REALIZADA'
+  | 'PROGRAMADA'
+  | 'CANCELADA'
+  | 'REAGENDADA'
 
 export type TableroRow = {
   no: number
@@ -18,7 +25,9 @@ export type TableroRow = {
   nombre: string
   horas: string
   flujo: string
-  estatus: 'REALIZADA' | 'PROGRAMADA' | 'REAGENDADA'
+  estatus: TableroEstatus
+  fechaReagendada: string
+  comentario: string
   metrics: TableroMetrics
   tieneReporte: boolean
   solicitudId: string
@@ -34,6 +43,13 @@ export type ReporteEntry = {
     horarioFin?: string
     comerciales?: { servicio?: string; ventasPorProducto?: string | number }[]
   }
+}
+
+export type TableroChartCounts = {
+  realizada: number
+  cancelada: number
+  reagendada: number
+  programada: number
 }
 
 const PDV_ALIASES: Record<string, string> = {
@@ -151,20 +167,28 @@ export function findReportForSolicitud(
   return bestScore >= 60 ? best : null
 }
 
-function isReagendada(sol: Solicitud, activaIds: Set<string>): boolean {
-  if (activaIds.has(sol.id)) return true
+function autoEstatus(
+  sol: Solicitud,
+  report: ReporteEntry | null,
+  activaIds: Set<string>,
+): TableroEstatus {
   const obs = String(sol.observaciones || '').toLowerCase()
-  return obs.includes('reagend')
+  if (activaIds.has(sol.id) || obs.includes('reagend')) return 'REAGENDADA'
+  if (report) return 'REALIZADA'
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const fechaBtl = sol.fechaBtl ? new Date(`${sol.fechaBtl.slice(0, 10)}T12:00:00`) : null
+  if (fechaBtl && fechaBtl < today) return 'REALIZADA'
+  return 'PROGRAMADA'
 }
 
 export function buildTableroRows(
   solicitudes: Solicitud[],
   rawList: ReporteEntry[],
   activaIds: Iterable<string> = [],
+  meta: TableroMetaMap = {},
 ): TableroRow[] {
   const restored = activaIds instanceof Set ? activaIds : new Set(activaIds)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
 
   const sorted = [...solicitudes].sort((a, b) =>
     String(a.fechaBtl || '').localeCompare(String(b.fechaBtl || '')),
@@ -177,11 +201,10 @@ export function buildTableroRows(
       ? extractComerciales(answers)
       : { portabilidad: '', recargas: '', pospago: '', esim: '', sim: '' }
     const horas = horasFromReport(answers) || '5'
-    const fechaBtl = sol.fechaBtl ? new Date(`${sol.fechaBtl.slice(0, 10)}T12:00:00`) : null
-    let estatus: TableroRow['estatus'] = 'PROGRAMADA'
-    if (isReagendada(sol, restored)) estatus = 'REAGENDADA'
-    else if (report) estatus = 'REALIZADA'
-    else if (fechaBtl && fechaBtl < today) estatus = 'REALIZADA'
+    const rowMeta = meta[sol.id] || {}
+    let estatus: TableroEstatus = autoEstatus(sol, report, restored)
+    if (rowMeta.estatus) estatus = rowMeta.estatus
+    else if (rowMeta.fechaReagendada) estatus = 'REAGENDADA'
 
     const flujo = String(sol.flujoDePersonas || 'MEDIO').toUpperCase()
 
@@ -196,11 +219,29 @@ export function buildTableroRows(
       horas,
       flujo: flujo.includes('ALTO') ? 'ALTO' : 'MEDIO',
       estatus,
+      fechaReagendada: rowMeta.fechaReagendada || '',
+      comentario: rowMeta.comentario || '',
       metrics,
       tieneReporte: Boolean(report),
       solicitudId: sol.id,
     }
   })
+}
+
+export function countTableroEstatus(rows: TableroRow[]): TableroChartCounts {
+  const counts: TableroChartCounts = {
+    realizada: 0,
+    cancelada: 0,
+    reagendada: 0,
+    programada: 0,
+  }
+  for (const row of rows) {
+    if (row.estatus === 'REALIZADA') counts.realizada += 1
+    else if (row.estatus === 'CANCELADA') counts.cancelada += 1
+    else if (row.estatus === 'REAGENDADA') counts.reagendada += 1
+    else counts.programada += 1
+  }
+  return counts
 }
 
 export function sumTableroMetrics(rows: TableroRow[]): TableroMetrics {

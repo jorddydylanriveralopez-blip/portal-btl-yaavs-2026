@@ -47,6 +47,14 @@ jobs:
           const activaIds = Array.isArray(live.activaIds) ? live.activaIds.filter((id) => typeof id === 'string' && id) : [];
           fs.writeFileSync('dist/status-solicitudes.json', JSON.stringify({ activaIds, updatedAt: new Date().toISOString() }, null, 2) + '\n');
           NODE
+          curl -fsSL "https://coral-oryx-137304.hostingersite.com/tablero-meta.php" -o /tmp/tablero-meta-live.json || echo '{"rows":{}}' > /tmp/tablero-meta-live.json
+          node <<'NODE'
+          const fs = require('fs');
+          let live = {};
+          try { live = JSON.parse(fs.readFileSync('/tmp/tablero-meta-live.json','utf8')); } catch {}
+          const rows = live.rows && typeof live.rows === 'object' ? live.rows : {};
+          fs.writeFileSync('dist/tablero-meta.json', JSON.stringify({ rows, updatedAt: new Date().toISOString() }, null, 2) + '\n');
+          NODE
           cd dist && zip -r ../portal-btl-deploy.zip .
           ls -lh ../portal-btl-deploy.zip
 

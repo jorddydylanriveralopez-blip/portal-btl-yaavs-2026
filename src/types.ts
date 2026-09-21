@@ -12,6 +12,8 @@ export type Solicitud = {
   puntoDeVenta?: string
   estado?: string
   municipioAlcaldia?: string
+  /** Colonia / asentamiento (Fillout u override). */
+  colonia?: string
   ubicacionGoogleMaps?: string
   fotoExterior?: FileAsset[]
   tipoDeZona?: string
@@ -44,6 +46,7 @@ export type SolicitudesResponse = {
 export type Filters = {
   search: string
   estado: string
+  municipio: string
   flujo: string
   fechaFrom: string
   fechaTo: string

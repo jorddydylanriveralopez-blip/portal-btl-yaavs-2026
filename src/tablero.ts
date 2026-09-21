@@ -20,6 +20,7 @@ export type TableroRow = {
   fecha: string
   estado: string
   municipio: string
+  colonia: string
   pdv: string
   clave: string
   nombre: string
@@ -51,6 +52,25 @@ export type TableroChartCounts = {
   reagendada: number
   programada: number
 }
+
+export type TableroEstadoCount = {
+  label: string
+  value: number
+}
+
+const ESTADO_CHART_COLORS = [
+  '#1a7a3c',
+  '#1f4e79',
+  '#c41e2a',
+  '#0f766e',
+  '#b45309',
+  '#4338ca',
+  '#be123c',
+  '#0369a1',
+  '#4d7c0f',
+  '#7c2d12',
+  '#6b7280',
+]
 
 const PDV_ALIASES: Record<string, string> = {
   cachiny: 'kachili',
@@ -211,8 +231,9 @@ export function buildTableroRows(
     return {
       no: idx + 1,
       fecha: formatFechaTablero(sol.fechaBtl),
-      estado: String(sol.estado || '').toUpperCase(),
+      estado: String(sol.estado || '').trim(),
       municipio: sol.municipioAlcaldia || '',
+      colonia: sol.colonia || '',
       pdv: sol.puntoDeVenta || '',
       clave: normalizeClaveTablero(sol.claveYaavser) || String(sol.claveYaavser || '').trim(),
       nombre: sol.nombreYaavser || '',
@@ -242,6 +263,123 @@ export function countTableroEstatus(rows: TableroRow[]): TableroChartCounts {
     else counts.programada += 1
   }
   return counts
+}
+
+/** Conteo de activaciones por estado (entidad federativa) en el periodo filtrado. */
+export function countTableroEstados(rows: TableroRow[]): TableroEstadoCount[] {
+  const map = new Map<string, number>()
+  for (const row of rows) {
+    const label = String(row.estado || '').trim() || 'SIN ESTADO'
+    map.set(label, (map.get(label) || 0) + 1)
+  }
+  return [...map.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'es'))
+}
+
+export function colorForEstado(label: string, index: number): string {
+  if (/sin estado/i.test(label)) return '#6b7280'
+  return ESTADO_CHART_COLORS[index % ESTADO_CHART_COLORS.length]
+}
+
+/** Sucursales distintas (PDV) en el tablero filtrado. */
+export function countUniqueSucursales(rows: TableroRow[]): number {
+  const set = new Set<string>()
+  for (const row of rows) {
+    const key = normKey(row.pdv)
+    if (key) set.add(key)
+  }
+  return set.size
+}
+
+export function solicitudInFechaRange(
+  sol: Pick<Solicitud, 'fechaBtl'>,
+  fechaFrom?: string,
+  fechaTo?: string,
+): boolean {
+  const from = String(fechaFrom || '').slice(0, 10)
+  const to = String(fechaTo || '').slice(0, 10)
+  if (!from && !to) return true
+  const d = String(sol.fechaBtl || '').slice(0, 10)
+  if (!d) return false
+  if (from && d < from) return false
+  if (to && d > to) return false
+  return true
+}
+
+function foldText(s?: string | null): string {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+}
+
+export function solicitudMatchesEstado(
+  sol: Pick<Solicitud, 'estado'>,
+  estado?: string,
+): boolean {
+  const want = foldText(estado)
+  if (!want) return true
+  return foldText(sol.estado) === want
+}
+
+export function solicitudMatchesMunicipio(
+  sol: Pick<Solicitud, 'municipioAlcaldia'>,
+  municipio?: string,
+): boolean {
+  const want = foldText(municipio)
+  if (!want) return true
+  return foldText(sol.municipioAlcaldia) === want
+}
+
+/** Búsqueda libre: PDV, nombre, clave, estado, municipio, colonia. */
+export function solicitudMatchesSearch(
+  sol: Pick<
+    Solicitud,
+    | 'puntoDeVenta'
+    | 'nombreYaavser'
+    | 'claveYaavser'
+    | 'ejecutivoDeVentas'
+    | 'estado'
+    | 'municipioAlcaldia'
+    | 'colonia'
+  >,
+  search?: string,
+): boolean {
+  const q = foldText(search)
+  if (!q) return true
+  const hay = [
+    sol.puntoDeVenta,
+    sol.nombreYaavser,
+    sol.claveYaavser,
+    sol.ejecutivoDeVentas,
+    sol.estado,
+    sol.municipioAlcaldia,
+    sol.colonia,
+  ]
+    .map(foldText)
+    .join(' ')
+  return hay.includes(q)
+}
+
+export function filterSolicitudesForTablero(
+  list: Solicitud[],
+  filters: {
+    fechaFrom?: string
+    fechaTo?: string
+    estado?: string
+    municipio?: string
+    search?: string
+  },
+): Solicitud[] {
+  return list.filter(
+    (s) =>
+      solicitudInFechaRange(s, filters.fechaFrom, filters.fechaTo) &&
+      solicitudMatchesEstado(s, filters.estado) &&
+      solicitudMatchesMunicipio(s, filters.municipio) &&
+      solicitudMatchesSearch(s, filters.search),
+  )
 }
 
 export function sumTableroMetrics(rows: TableroRow[]): TableroMetrics {

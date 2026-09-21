@@ -3,8 +3,12 @@ import { REPORTE_TABLERO_XLSX } from './reporteApi'
 import { downloadTableroCsv } from './export'
 import {
   buildTableroRows,
+  colorForEstado,
+  countTableroEstados,
   countTableroEstatus,
+  countUniqueSucursales,
   type ReporteEntry,
+  type TableroEstadoCount,
   type TableroEstatus,
   type TableroRow,
 } from './tablero'
@@ -20,6 +24,8 @@ type Props = {
   solicitudes: Solicitud[]
   reportes: ReporteEntry[]
   activaIds: string[]
+  fechaFrom?: string
+  fechaTo?: string
   loading: boolean
   error: string | null
   onRetry: () => void
@@ -72,20 +78,17 @@ function donutSlice(
   ].join(' ')
 }
 
-function ChartPie({
-  realizada,
-  cancelada,
-  reagendada,
+function DonutChart({
+  items,
+  emptyLabel,
+  ariaLabel,
+  filterId,
 }: {
-  realizada: number
-  cancelada: number
-  reagendada: number
+  items: { key: string; label: string; value: number; color: string }[]
+  emptyLabel: string
+  ariaLabel: string
+  filterId: string
 }) {
-  const items = [
-    { key: 'realizada', label: 'Realizadas', value: realizada, color: '#1a7a3c' },
-    { key: 'cancelada', label: 'Canceladas', value: cancelada, color: '#6b7280' },
-    { key: 'reagendada', label: 'Reagendadas', value: reagendada, color: '#c41e2a' },
-  ]
   const total = items.reduce((sum, item) => sum + item.value, 0)
   const cx = 110
   const cy = 110
@@ -117,66 +120,72 @@ function ChartPie({
           })
 
   return (
-    <div className="tablero-chart" aria-label="Resumen de estatus">
-      <h3 className="tablero-chart-title">Resumen de estatus</h3>
-      <div className="tablero-pie-layout">
-        <div className="tablero-pie-visual">
-          <svg
-            className="tablero-pie-svg"
-            viewBox="0 0 220 220"
-            role="img"
-            aria-label={`Realizadas ${realizada}, canceladas ${cancelada}, reagendadas ${reagendada}`}
-          >
-            <defs>
-              <filter id="pie-shadow" x="-20%" y="-20%" width="140%" height="140%">
-                <feDropShadow dx="0" dy="6" stdDeviation="8" floodColor="#0b2a44" floodOpacity="0.18" />
-              </filter>
-              <linearGradient id="pie-hole" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ffffff" />
-                <stop offset="100%" stopColor="#eef5fb" />
-              </linearGradient>
-            </defs>
-            <circle cx={cx} cy={cy} r={rOuter + 4} fill="#e8eef4" opacity="0.55" />
-            {total === 0 ? (
-              <circle cx={cx} cy={cy} r={rOuter} fill="#d5dee8" />
-            ) : (
-              <g filter="url(#pie-shadow)">
-                {slices.map((slice) => (
-                  <path
-                    key={slice.key}
-                    className={`tablero-pie-slice pie-${slice.key}`}
-                    d={slice.path}
-                    fill={slice.color}
-                  />
-                ))}
-              </g>
-            )}
-            <circle cx={cx} cy={cy} r={rInner} fill="url(#pie-hole)" />
-            {slices.map(
-              (slice) =>
-                slice.showPct && (
-                  <text
-                    key={`${slice.key}-pct`}
-                    x={slice.labelPos.x}
-                    y={slice.labelPos.y}
-                    className="tablero-pie-pct"
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                  >
-                    {slice.pct}%
-                  </text>
-                ),
-            )}
-            <text x={cx} y={cy - 10} className="tablero-pie-total-label" textAnchor="middle">
-              Total
-            </text>
-            <text x={cx} y={cy + 18} className="tablero-pie-total-value" textAnchor="middle">
-              {total}
-            </text>
-          </svg>
-        </div>
-        <ul className="tablero-pie-legend">
-          {items.map((item) => {
+    <div className="tablero-pie-layout">
+      <div className="tablero-pie-visual">
+        <svg
+          className="tablero-pie-svg"
+          viewBox="0 0 220 220"
+          role="img"
+          aria-label={ariaLabel}
+        >
+          <defs>
+            <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="6" stdDeviation="8" floodColor="#0b2a44" floodOpacity="0.18" />
+            </filter>
+            <linearGradient id={`${filterId}-hole`} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" />
+              <stop offset="100%" stopColor="#eef5fb" />
+            </linearGradient>
+          </defs>
+          <circle cx={cx} cy={cy} r={rOuter + 4} fill="#e8eef4" opacity="0.55" />
+          {total === 0 ? (
+            <circle cx={cx} cy={cy} r={rOuter} fill="#d5dee8" />
+          ) : (
+            <g filter={`url(#${filterId})`}>
+              {slices.map((slice) => (
+                <path
+                  key={slice.key}
+                  className="tablero-pie-slice"
+                  d={slice.path}
+                  fill={slice.color}
+                />
+              ))}
+            </g>
+          )}
+          <circle cx={cx} cy={cy} r={rInner} fill={`url(#${filterId}-hole)`} />
+          {slices.map(
+            (slice) =>
+              slice.showPct && (
+                <text
+                  key={`${slice.key}-pct`}
+                  x={slice.labelPos.x}
+                  y={slice.labelPos.y}
+                  className="tablero-pie-pct"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                >
+                  {slice.pct}%
+                </text>
+              ),
+          )}
+          <text x={cx} y={cy - 10} className="tablero-pie-total-label" textAnchor="middle">
+            Total
+          </text>
+          <text x={cx} y={cy + 18} className="tablero-pie-total-value" textAnchor="middle">
+            {total}
+          </text>
+        </svg>
+      </div>
+      <ul className="tablero-pie-legend">
+        {items.length === 0 || total === 0 ? (
+          <li className="tablero-pie-legend-item">
+            <div className="tablero-pie-legend-copy">
+              <span>{emptyLabel}</span>
+              <strong>0</strong>
+            </div>
+          </li>
+        ) : (
+          items.map((item) => {
             const pct = total ? Math.round((item.value / total) * 100) : 0
             return (
               <li key={item.key} className="tablero-pie-legend-item">
@@ -190,17 +199,125 @@ function ChartPie({
                 </div>
               </li>
             )
-          })}
-        </ul>
+          })
+        )}
+      </ul>
+    </div>
+  )
+}
+
+function ChartResumen({
+  realizada,
+  cancelada,
+  reagendada,
+  programada,
+  estados,
+  activaciones,
+  sucursales,
+  rangoLabel,
+}: {
+  realizada: number
+  cancelada: number
+  reagendada: number
+  programada: number
+  estados: TableroEstadoCount[]
+  activaciones: number
+  sucursales: number
+  rangoLabel: string
+}) {
+  const estatusItems = [
+    { key: 'realizada', label: 'Realizadas', value: realizada, color: '#1a7a3c' },
+    { key: 'cancelada', label: 'Canceladas', value: cancelada, color: '#6b7280' },
+    { key: 'reagendada', label: 'Reagendadas', value: reagendada, color: '#c41e2a' },
+    { key: 'programada', label: 'Programadas', value: programada, color: '#1f4e79' },
+  ]
+
+  const estadoItems = estados.map((e, i) => ({
+    key: e.label,
+    label: e.label,
+    value: e.value,
+    color: colorForEstado(e.label, i),
+  }))
+
+  return (
+    <div className="tablero-charts">
+      <div className="tablero-chart" aria-label="Resumen de estatus">
+        <h3 className="tablero-chart-title">Resumen de estatus</h3>
+        {rangoLabel ? <p className="tablero-chart-range">{rangoLabel}</p> : null}
+        <div className="tablero-kpi-row tablero-kpi-row-4" aria-label="Totales de estatus">
+          <div className="tablero-kpi">
+            <span className="tablero-kpi-label">Realizadas</span>
+            <strong className="tablero-kpi-value">{realizada}</strong>
+          </div>
+          <div className="tablero-kpi">
+            <span className="tablero-kpi-label">Canceladas</span>
+            <strong className="tablero-kpi-value">{cancelada}</strong>
+          </div>
+          <div className="tablero-kpi">
+            <span className="tablero-kpi-label">Reagendadas</span>
+            <strong className="tablero-kpi-value">{reagendada}</strong>
+          </div>
+          <div className="tablero-kpi">
+            <span className="tablero-kpi-label">Programadas</span>
+            <strong className="tablero-kpi-value">{programada}</strong>
+          </div>
+        </div>
+        <DonutChart
+          items={estatusItems}
+          emptyLabel="Sin activaciones en el periodo"
+          ariaLabel={`Realizadas ${realizada}, canceladas ${cancelada}, reagendadas ${reagendada}, programadas ${programada}`}
+          filterId="pie-estatus"
+        />
+      </div>
+
+      <div className="tablero-chart" aria-label="Resumen por estado">
+        <h3 className="tablero-chart-title">Resumen por estado</h3>
+        {rangoLabel ? <p className="tablero-chart-range">{rangoLabel}</p> : null}
+        <div className="tablero-kpi-row" aria-label="Totales del periodo">
+          <div className="tablero-kpi">
+            <span className="tablero-kpi-label">Activaciones</span>
+            <strong className="tablero-kpi-value">{activaciones}</strong>
+          </div>
+          <div className="tablero-kpi tablero-kpi-accent">
+            <span className="tablero-kpi-label">Sucursales vistas</span>
+            <strong className="tablero-kpi-value">{sucursales}</strong>
+          </div>
+          <div className="tablero-kpi">
+            <span className="tablero-kpi-label">Estados</span>
+            <strong className="tablero-kpi-value">{estados.length}</strong>
+          </div>
+        </div>
+        <DonutChart
+          items={estadoItems}
+          emptyLabel="Sin activaciones en el periodo"
+          ariaLabel={`Activaciones por estado: ${estadoItems.map((i) => `${i.label} ${i.value}`).join(', ') || 'sin datos'}`}
+          filterId="pie-estados"
+        />
       </div>
     </div>
   )
+}
+
+function formatRangoLabel(fechaFrom?: string, fechaTo?: string): string {
+  const from = String(fechaFrom || '').slice(0, 10)
+  const to = String(fechaTo || '').slice(0, 10)
+  if (!from && !to) return 'Sin filtro de fechas (todas las activaciones)'
+  const fmt = (iso: string) => {
+    const [y, m, d] = iso.split('-')
+    if (!y || !m || !d) return iso
+    return `${d}/${m}/${y}`
+  }
+  if (from && to) return `Periodo: ${fmt(from)} → ${fmt(to)}`
+  if (from) return `Desde ${fmt(from)}`
+  return `Hasta ${fmt(to)}`
 }
 
 export default function TableroActivacionView({
   solicitudes,
   reportes,
   activaIds,
+  fechaFrom,
+  fechaTo,
   loading,
   error,
   onRetry,
@@ -225,6 +342,12 @@ export default function TableroActivacionView({
     [solicitudes, reportes, activaIds, meta],
   )
   const chart = useMemo(() => countTableroEstatus(rows), [rows])
+  const estadosChart = useMemo(() => countTableroEstados(rows), [rows])
+  const sucursales = useMemo(() => countUniqueSucursales(rows), [rows])
+  const rangoLabel = useMemo(
+    () => formatRangoLabel(fechaFrom, fechaTo),
+    [fechaFrom, fechaTo],
+  )
 
   const patchRow = async (id: string, patch: TableroMetaRow) => {
     setSavingId(id)
@@ -250,7 +373,8 @@ export default function TableroActivacionView({
         <div>
           <h2 className="tablero-title">ACTIVACION BTL</h2>
           <p className="tablero-lede">
-            Todas las solicitudes del portal, con estatus editable, fecha reagendada y comentarios.
+            Filtra por Estado, Municipio y Desde/Hasta para ver activaciones con su ubicación.
+            Estatus, fecha reagendada y comentarios son editables.
           </p>
         </div>
         <div className="tablero-actions">
@@ -285,10 +409,15 @@ export default function TableroActivacionView({
 
       {!loading && !metaLoading && !error && (
         <>
-          <ChartPie
+          <ChartResumen
             realizada={chart.realizada}
             cancelada={chart.cancelada}
             reagendada={chart.reagendada}
+            programada={chart.programada}
+            estados={estadosChart}
+            activaciones={rows.length}
+            sucursales={sucursales}
+            rangoLabel={rangoLabel}
           />
 
           <div className="tablero-scroll">
@@ -299,6 +428,7 @@ export default function TableroActivacionView({
                   <th>FECHA</th>
                   <th>ESTADO</th>
                   <th>MUNICIPIO/ALCALDIA</th>
+                  <th>COLONIA</th>
                   <th>PDV</th>
                   <th>CLAVE YAAVSER</th>
                   <th>NOMBRE DEL YAAV</th>
@@ -319,8 +449,9 @@ export default function TableroActivacionView({
                   <tr key={row.solicitudId}>
                     <td>{row.no}</td>
                     <td>{row.fecha}</td>
-                    <td>{row.estado}</td>
-                    <td>{row.municipio}</td>
+                    <td>{row.estado || '—'}</td>
+                    <td className="tablero-ubicacion">{row.municipio || '—'}</td>
+                    <td className="tablero-ubicacion">{row.colonia || '—'}</td>
                     <td className="tablero-pdv">{row.pdv}</td>
                     <td>{row.clave}</td>
                     <td className="tablero-nombre">{row.nombre}</td>

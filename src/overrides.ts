@@ -15,6 +15,7 @@ export type AddressOverride = {
   puntoDeVenta?: string
   estado?: string
   municipioAlcaldia?: string
+  colonia?: string
   ubicacionGoogleMaps?: string
   tipoDeZona?: string
 }
@@ -46,6 +47,7 @@ export function saveAddressOverride(id: string, data: AddressOverride) {
     puntoDeVenta: data.puntoDeVenta?.trim() || undefined,
     estado: data.estado?.trim() || undefined,
     municipioAlcaldia: data.municipioAlcaldia?.trim() || undefined,
+    colonia: data.colonia?.trim() || undefined,
     ubicacionGoogleMaps: data.ubicacionGoogleMaps?.trim() || undefined,
     tipoDeZona: data.tipoDeZona?.trim() || undefined,
   }
@@ -60,6 +62,7 @@ export function applyAddressOverride(s: Solicitud): Solicitud {
     puntoDeVenta: o.puntoDeVenta ?? s.puntoDeVenta,
     estado: o.estado ?? s.estado,
     municipioAlcaldia: o.municipioAlcaldia ?? s.municipioAlcaldia,
+    colonia: o.colonia ?? s.colonia,
     ubicacionGoogleMaps: o.ubicacionGoogleMaps ?? s.ubicacionGoogleMaps,
     tipoDeZona: o.tipoDeZona ?? s.tipoDeZona,
   }

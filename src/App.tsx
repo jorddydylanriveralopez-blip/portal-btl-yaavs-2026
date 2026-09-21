@@ -32,6 +32,7 @@ import { fetchActivaIds, markAsTerminada, restoreToActivas } from './status'
 import { fetchReporteResponses } from './reporteApi'
 import TableroActivacionView from './TableroActivacionView'
 import type { ReporteEntry } from './tablero'
+import { filterSolicitudesForTablero } from './tablero'
 import {
   fetchTableroMeta,
   saveTableroMeta,
@@ -57,6 +58,7 @@ const CARD_ESTATUS_OPTIONS: TableroEstatusManual[] = [
 const EMPTY_FILTERS: Filters = {
   search: '',
   estado: '',
+  municipio: '',
   flujo: '',
   fechaFrom: '',
   fechaTo: '',
@@ -216,11 +218,11 @@ export default function App() {
     }
   }, [])
 
-  const loadTableroSolicitudes = useCallback(async () => {
+  const loadTableroSolicitudes = useCallback(async (f: Filters = EMPTY_FILTERS) => {
     setTableroLoading(true)
     setTableroError(null)
     try {
-      const data = await getSolicitudes(EMPTY_FILTERS)
+      const data = await getSolicitudes(f)
       setTableroRaw(data.records || [])
     } catch (e) {
       setTableroRaw([])
@@ -232,10 +234,25 @@ export default function App() {
     }
   }, [])
 
-  const tableroRecords = useMemo(
-    () => filterDeleted(applyAddressOverrides(tableroRaw), deletedIds),
-    [tableroRaw, overrideTick, deletedIds],
-  )
+  const tableroRecords = useMemo(() => {
+    const base = filterDeleted(applyAddressOverrides(tableroRaw), deletedIds)
+    return filterSolicitudesForTablero(base, {
+      fechaFrom: filters.fechaFrom,
+      fechaTo: filters.fechaTo,
+      estado: filters.estado,
+      municipio: filters.municipio,
+      search: filters.search,
+    })
+  }, [
+    tableroRaw,
+    overrideTick,
+    deletedIds,
+    filters.fechaFrom,
+    filters.fechaTo,
+    filters.estado,
+    filters.municipio,
+    filters.search,
+  ])
 
   useEffect(() => {
     void load(debounced)
@@ -250,9 +267,9 @@ export default function App() {
   useEffect(() => {
     if (pageMode === 'tablero') {
       void loadReportes()
-      void loadTableroSolicitudes()
+      void loadTableroSolicitudes(debounced)
     }
-  }, [pageMode, loadReportes, loadTableroSolicitudes])
+  }, [pageMode, debounced, loadReportes, loadTableroSolicitudes])
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -262,7 +279,7 @@ export default function App() {
       void refreshTableroMeta()
       if (pageMode === 'tablero') {
         void loadReportes()
-        void loadTableroSolicitudes()
+        void loadTableroSolicitudes(filters)
       }
     }, 60_000)
     return () => window.clearInterval(id)
@@ -278,7 +295,15 @@ export default function App() {
   ])
 
   const sorted = useMemo(() => {
+    const fold = (s?: string) =>
+      String(s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+    const wantMun = fold(filters.municipio)
     const list = [...records].filter((s) => {
+      if (wantMun && fold(s.municipioAlcaldia) !== wantMun) return false
       if (statusFilter === 'terminadas') return isTerminada(s, activaSet)
       if (statusFilter === 'activas') return !isTerminada(s, activaSet)
       return true
@@ -298,7 +323,7 @@ export default function App() {
       return sort === 'fecha-asc' ? da.localeCompare(db) : db.localeCompare(da)
     })
     return list
-  }, [records, sort, statusFilter, activaSet])
+  }, [records, sort, statusFilter, activaSet, filters.municipio])
 
   const stats = useMemo(() => {
     const byFlujo: Record<string, number> = {}
@@ -313,10 +338,32 @@ export default function App() {
   }, [records, activaSet])
 
   const estados = useMemo(() => {
-    const set = new Set(records.map((r) => r.estado).filter(Boolean) as string[])
-    ;['Ciudad de México', 'Estado de México'].forEach((e) => set.add(e))
-    return [...set].sort()
-  }, [records])
+    const set = new Set<string>()
+    for (const r of records) if (r.estado) set.add(r.estado)
+    for (const r of tableroRaw) if (r.estado) set.add(r.estado)
+    ;['Ciudad de México', 'Estado de México', 'Hidalgo', 'Guerrero', 'Morelos', 'Puebla'].forEach(
+      (e) => set.add(e),
+    )
+    return [...set].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [records, tableroRaw])
+
+  const municipios = useMemo(() => {
+    const source = pageMode === 'tablero' ? tableroRaw : records
+    const fold = (s: string) =>
+      s
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+    const wantEstado = fold(filters.estado || '')
+    const set = new Set<string>()
+    for (const r of source) {
+      const mun = (r.municipioAlcaldia || '').trim()
+      if (!mun) continue
+      if (wantEstado && fold(r.estado || '') !== wantEstado) continue
+      set.add(mun)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [pageMode, tableroRaw, records, filters.estado])
 
   const flujos = useMemo(() => {
     const base = ['Alto', 'Medio', 'Bajo']
@@ -333,7 +380,13 @@ export default function App() {
   }, [sorted, activaSet])
 
   const patch = (partial: Partial<Filters>) =>
-    setFilters((prev) => ({ ...prev, ...partial }))
+    setFilters((prev) => {
+      const next = { ...prev, ...partial }
+      if (partial.estado !== undefined && partial.estado !== prev.estado) {
+        next.municipio = ''
+      }
+      return next
+    })
 
   const exportAll = () => {
     if (!sorted.length) return
@@ -503,7 +556,7 @@ export default function App() {
           )}
           <div className="metric">
             <span>Viendo</span>
-            <strong>{sorted.length}</strong>
+            <strong>{pageMode === 'tablero' ? tableroRecords.length : sorted.length}</strong>
           </div>
           {updatedAt && (
             <div className="metric metric-time">
@@ -524,7 +577,7 @@ export default function App() {
             <input
               value={filters.search}
               onChange={(e) => patch({ search: e.target.value })}
-              placeholder="Buscar ejecutivo, YAAVSER, clave o punto de venta…"
+              placeholder="Buscar PDV, YAAVSER, estado, municipio o colonia…"
             />
           </label>
           <label className="field">
@@ -537,6 +590,20 @@ export default function App() {
               {estados.map((e) => (
                 <option key={e} value={e}>
                   {e}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Municipio</span>
+            <select
+              value={filters.municipio}
+              onChange={(e) => patch({ municipio: e.target.value })}
+            >
+              <option value="">Todos</option>
+              {municipios.map((m) => (
+                <option key={m} value={m}>
+                  {m}
                 </option>
               ))}
             </select>
@@ -624,11 +691,13 @@ export default function App() {
               solicitudes={tableroRecords}
               reportes={reportes}
               activaIds={activaIds}
+              fechaFrom={filters.fechaFrom}
+              fechaTo={filters.fechaTo}
               loading={reportesLoading || tableroLoading}
               error={reportesError || tableroError}
               onRetry={() => {
                 void loadReportes()
-                void loadTableroSolicitudes()
+                void loadTableroSolicitudes(filters)
               }}
             />
           ) : (
@@ -1379,7 +1448,7 @@ function DeleteConfirm({
               {s.claveYaavser ? ` · ${s.claveYaavser}` : ''}
             </span>
             <span className="sheet-preview-meta">
-              {[s.estado, s.municipioAlcaldia, formatFecha(s.fechaBtl)]
+              {[s.estado, s.municipioAlcaldia, s.colonia, formatFecha(s.fechaBtl)]
                 .filter(Boolean)
                 .join(' · ')}
             </span>
@@ -1664,6 +1733,7 @@ function Detail({
       puntoDeVenta: o.puntoDeVenta ?? s.puntoDeVenta ?? '',
       estado: o.estado ?? s.estado ?? '',
       municipioAlcaldia: o.municipioAlcaldia ?? s.municipioAlcaldia ?? '',
+      colonia: o.colonia ?? s.colonia ?? '',
       ubicacionGoogleMaps: o.ubicacionGoogleMaps ?? s.ubicacionGoogleMaps ?? '',
       tipoDeZona: o.tipoDeZona ?? s.tipoDeZona ?? '',
     })
@@ -1830,6 +1900,7 @@ function Detail({
             {display.municipioAlcaldia && (
               <span className="chip">{display.municipioAlcaldia}</span>
             )}
+            {display.colonia && <span className="chip">{display.colonia}</span>}
             {display.tipoDeZona && <span className="chip">{display.tipoDeZona}</span>}
             {s.permisoConfirmado && <span className="chip">{s.permisoConfirmado}</span>}
           </div>
@@ -1892,6 +1963,7 @@ function Detail({
                 <div className="fact-grid">
                   <Fact label="Estado" value={display.estado} />
                   <Fact label="Municipio / Alcaldía" value={display.municipioAlcaldia} />
+                  <Fact label="Colonia" value={display.colonia} />
                   <Fact label="Tipo de zona" value={display.tipoDeZona} />
                   <Fact label="Flujo" value={s.flujoDePersonas} />
                 </div>
@@ -1976,6 +2048,13 @@ function Detail({
                     onChange={(e) =>
                       setDraft((d) => ({ ...d, municipioAlcaldia: e.target.value }))
                     }
+                  />
+                </label>
+                <label>
+                  <span>Colonia</span>
+                  <input
+                    value={draft.colonia || ''}
+                    onChange={(e) => setDraft((d) => ({ ...d, colonia: e.target.value }))}
                   />
                 </label>
                 <label>

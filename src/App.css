@@ -2504,6 +2504,15 @@ a {
   max-width: 180px;
 }
 
+.tablero-ubicacion {
+  text-align: left;
+  min-width: 110px;
+  max-width: 180px;
+  white-space: normal;
+  line-height: 1.25;
+  font-size: 0.88rem;
+}
+
 .tablero-horas-low {
   background: #ffc7ce !important;
   color: #9c0006;
@@ -2582,12 +2591,96 @@ a {
   box-shadow: 0 10px 28px rgba(11, 42, 68, 0.06);
 }
 
+.tablero-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.tablero-charts .tablero-chart {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.tablero-kpi-row-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tablero-kpi-row-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 980px) {
+  .tablero-charts {
+    grid-template-columns: 1fr;
+  }
+
+  .tablero-kpi-row-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .tablero-chart-title {
   margin: 0 0 14px;
   font-family: 'Space Grotesk', sans-serif;
   font-size: 1.05rem;
   letter-spacing: -0.02em;
   color: var(--navy);
+}
+
+.tablero-chart-range {
+  margin: -6px 0 14px;
+  font-size: 0.88rem;
+  color: #4a647a;
+}
+
+.tablero-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.tablero-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(31, 78, 121, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.tablero-kpi-accent {
+  border-color: rgba(26, 122, 60, 0.28);
+  background: rgba(26, 122, 60, 0.08);
+}
+
+.tablero-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5a7388;
+}
+
+.tablero-kpi-value {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.55rem;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--navy);
+}
+
+.tablero-kpi-accent .tablero-kpi-value {
+  color: #146330;
+}
+
+@media (max-width: 720px) {
+  .tablero-kpi-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .tablero-pie-layout {
@@ -2652,6 +2745,8 @@ a {
   padding: 0;
   display: grid;
   gap: 10px;
+  max-height: 280px;
+  overflow: auto;
 }
 
 .tablero-pie-legend-item {

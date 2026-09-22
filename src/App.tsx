@@ -28,7 +28,7 @@ import {
   snapshotFromSolicitud,
   type TrashItem,
 } from './deleted'
-import { fetchActivaIds, markAsTerminada, restoreToActivas } from './status'
+import { fetchStatusStore, markAsTerminada, restoreToActivas } from './status'
 import { fetchReporteResponses } from './reporteApi'
 import TableroActivacionView from './TableroActivacionView'
 import type { ReporteEntry } from './tablero'
@@ -81,10 +81,16 @@ function fechaKey(iso?: string): string {
   return iso.slice(0, 10)
 }
 
-/** Terminada si la fecha BTL ya pasó, salvo que se haya restaurado a activas. */
-function isTerminada(s: Solicitud, activaIds: Iterable<string> = []): boolean {
+/** Terminada si está forzada, o si la fecha BTL ya pasó (salvo restaurada a activas). */
+function isTerminada(
+  s: Solicitud,
+  activaIds: Iterable<string> = [],
+  terminadaIds: Iterable<string> = [],
+): boolean {
   const restored = activaIds instanceof Set ? activaIds : new Set(activaIds)
   if (restored.has(s.id)) return false
+  const forced = terminadaIds instanceof Set ? terminadaIds : new Set(terminadaIds)
+  if (forced.has(s.id)) return true
   const d = fechaKey(s.fechaBtl)
   return !!d && d < todayKey()
 }
@@ -125,6 +131,7 @@ export default function App() {
   const [pendingDelete, setPendingDelete] = useState<Solicitud | null>(null)
   const [trashOpen, setTrashOpen] = useState(false)
   const [activaIds, setActivaIds] = useState<string[]>([])
+  const [terminadaIds, setTerminadaIds] = useState<string[]>([])
   const [pageMode, setPageMode] = useState<PageMode>('solicitudes')
   const [reportes, setReportes] = useState<ReporteEntry[]>([])
   const [reportesLoading, setReportesLoading] = useState(false)
@@ -135,10 +142,16 @@ export default function App() {
   const [tableroMeta, setTableroMeta] = useState<TableroMetaMap>({})
 
   const activaSet = useMemo(() => new Set(activaIds), [activaIds])
+  const terminadaSet = useMemo(() => new Set(terminadaIds), [terminadaIds])
 
   const applyTrashStore = (ids: string[], items: TrashItem[]) => {
     setDeletedIds(ids)
     setTrashItems(items)
+  }
+
+  const applyStatusStore = (activa: string[], terminada: string[]) => {
+    setActivaIds(activa)
+    setTerminadaIds(terminada)
   }
 
   const refreshTrash = useCallback(async () => {
@@ -147,7 +160,8 @@ export default function App() {
   }, [])
 
   const refreshStatus = useCallback(async () => {
-    setActivaIds(await fetchActivaIds())
+    const store = await fetchStatusStore()
+    applyStatusStore(store.activaIds, store.terminadaIds)
   }, [])
 
   const refreshTableroMeta = useCallback(async () => {
@@ -304,8 +318,8 @@ export default function App() {
     const wantMun = fold(filters.municipio)
     const list = [...records].filter((s) => {
       if (wantMun && fold(s.municipioAlcaldia) !== wantMun) return false
-      if (statusFilter === 'terminadas') return isTerminada(s, activaSet)
-      if (statusFilter === 'activas') return !isTerminada(s, activaSet)
+      if (statusFilter === 'terminadas') return isTerminada(s, activaSet, terminadaSet)
+      if (statusFilter === 'activas') return !isTerminada(s, activaSet, terminadaSet)
       return true
     })
     list.sort((a, b) => {
@@ -323,19 +337,19 @@ export default function App() {
       return sort === 'fecha-asc' ? da.localeCompare(db) : db.localeCompare(da)
     })
     return list
-  }, [records, sort, statusFilter, activaSet, filters.municipio])
+  }, [records, sort, statusFilter, activaSet, terminadaSet, filters.municipio])
 
   const stats = useMemo(() => {
     const byFlujo: Record<string, number> = {}
     const withPhoto = records.filter((r) => (r.fotoExterior?.length || 0) > 0).length
-    const terminadas = records.filter((s) => isTerminada(s, activaSet)).length
+    const terminadas = records.filter((s) => isTerminada(s, activaSet, terminadaSet)).length
     const activas = records.length - terminadas
     for (const r of records) {
       const f = r.flujoDePersonas || 'Sin dato'
       byFlujo[f] = (byFlujo[f] || 0) + 1
     }
     return { byFlujo, withPhoto, terminadas, activas }
-  }, [records, activaSet])
+  }, [records, activaSet, terminadaSet])
 
   const estados = useMemo(() => {
     const set = new Set<string>()
@@ -374,10 +388,10 @@ export default function App() {
   }, [records])
 
   const { activasList, terminadasList } = useMemo(() => {
-    const activasList = sorted.filter((s) => !isTerminada(s, activaSet))
-    const terminadasList = sorted.filter((s) => isTerminada(s, activaSet))
+    const activasList = sorted.filter((s) => !isTerminada(s, activaSet, terminadaSet))
+    const terminadasList = sorted.filter((s) => isTerminada(s, activaSet, terminadaSet))
     return { activasList, terminadasList }
-  }, [sorted, activaSet])
+  }, [sorted, activaSet, terminadaSet])
 
   const patch = (partial: Partial<Filters>) =>
     setFilters((prev) => {
@@ -400,7 +414,7 @@ export default function App() {
       showToast(result.message || 'No se pudo restaurar')
       return
     }
-    setActivaIds(result.activaIds)
+    applyStatusStore(result.activaIds, result.terminadaIds)
     showToast('Restaurada en activas')
   }
 
@@ -410,7 +424,7 @@ export default function App() {
       showToast(result.message || 'No se pudo marcar como terminada')
       return
     }
-    setActivaIds(result.activaIds)
+    applyStatusStore(result.activaIds, result.terminadaIds)
     showToast('Movida a terminadas')
   }
 
@@ -817,7 +831,7 @@ export default function App() {
       {selected && (
         <Detail
           solicitud={selected}
-          done={isTerminada(selected, activaSet)}
+          done={isTerminada(selected, activaSet, terminadaSet)}
           restored={activaSet.has(selected.id)}
           onClose={() => setSelectedId(null)}
           onToast={showToast}
@@ -1313,7 +1327,7 @@ function SolicitudCard({
             >
               Restaurar
             </button>
-          ) : restored ? (
+          ) : (
             <button
               type="button"
               className="btn btn-text"
@@ -1323,7 +1337,7 @@ function SolicitudCard({
             >
               Terminar
             </button>
-          ) : null}
+          )}
           <button
             type="button"
             className="btn btn-soft"
@@ -1694,7 +1708,7 @@ function TrashPanel({
 function Detail({
   solicitud: s,
   done,
-  restored,
+  restored: _restored,
   onClose,
   onToast,
   onAddressSaved,
@@ -1712,6 +1726,7 @@ function Detail({
   onRestore: () => void
   onMarkDone: () => void
 }) {
+  void _restored
   const [lightbox, setLightbox] = useState<number | null>(null)
   const [editingAddress, setEditingAddress] = useState(false)
   const [password, setPassword] = useState('')
@@ -1879,11 +1894,11 @@ function Detail({
               <button type="button" className="btn btn-restore" onClick={onRestore}>
                 Restaurar a activas
               </button>
-            ) : restored ? (
+            ) : (
               <button type="button" className="btn btn-soft" onClick={onMarkDone}>
-                Marcar terminada
+                Bajar a terminados
               </button>
-            ) : null}
+            )}
             <button
               type="button"
               className="btn btn-danger"

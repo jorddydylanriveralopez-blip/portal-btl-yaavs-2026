@@ -1,7 +1,7 @@
 <?php
 /**
- * Forzar solicitudes restauradas a Activas (aunque la fecha BTL ya haya pasado).
- * GET  → { ok, activaIds: string[] }
+ * Forzar solicitudes en Activas o Terminadas (independiente de la fecha BTL).
+ * GET  → { ok, activaIds: string[], terminadaIds: string[] }
  * POST → { id, action?: "activa"|"terminada" }
  */
 declare(strict_types=1);
@@ -20,44 +20,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 const STORE_FILE = __DIR__ . '/status-solicitudes.json';
 
 /**
- * @return string[]
+ * @return array{activaIds: string[], terminadaIds: string[]}
  */
-function read_activa_ids(): array {
+function read_store(): array {
+  $empty = ['activaIds' => [], 'terminadaIds' => []];
   if (!is_file(STORE_FILE)) {
-    return [];
+    return $empty;
   }
   $raw = @file_get_contents(STORE_FILE);
   if ($raw === false || $raw === '') {
-    return [];
+    return $empty;
   }
   $data = json_decode($raw, true);
-  if (!is_array($data) || !isset($data['activaIds']) || !is_array($data['activaIds'])) {
-    return [];
+  if (!is_array($data)) {
+    return $empty;
   }
-  $ids = [];
-  foreach ($data['activaIds'] as $id) {
-    if (is_string($id) && $id !== '') {
-      $ids[] = $id;
+  $activa = [];
+  if (isset($data['activaIds']) && is_array($data['activaIds'])) {
+    foreach ($data['activaIds'] as $id) {
+      if (is_string($id) && $id !== '') {
+        $activa[] = $id;
+      }
     }
   }
-  return array_values(array_unique($ids));
+  $terminada = [];
+  if (isset($data['terminadaIds']) && is_array($data['terminadaIds'])) {
+    foreach ($data['terminadaIds'] as $id) {
+      if (is_string($id) && $id !== '') {
+        $terminada[] = $id;
+      }
+    }
+  }
+  return [
+    'activaIds' => array_values(array_unique($activa)),
+    'terminadaIds' => array_values(array_unique($terminada)),
+  ];
 }
 
 /**
- * @param string[] $ids
+ * @param string[] $activaIds
+ * @param string[] $terminadaIds
  */
-function write_activa_ids(array $ids): bool {
+function write_store(array $activaIds, array $terminadaIds): bool {
   $payload = json_encode([
-    'activaIds' => array_values(array_unique($ids)),
+    'activaIds' => array_values(array_unique($activaIds)),
+    'terminadaIds' => array_values(array_unique($terminadaIds)),
     'updatedAt' => gmdate('c'),
   ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
   return @file_put_contents(STORE_FILE, $payload . "\n", LOCK_EX) !== false;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+  $store = read_store();
   echo json_encode([
     'ok' => true,
-    'activaIds' => read_activa_ids(),
+    'activaIds' => $store['activaIds'],
+    'terminadaIds' => $store['terminadaIds'],
   ], JSON_UNESCAPED_UNICODE);
   exit;
 }
@@ -68,6 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     'ok' => false,
     'message' => 'Método no permitido',
     'activaIds' => [],
+    'terminadaIds' => [],
   ], JSON_UNESCAPED_UNICODE);
   exit;
 }
@@ -80,6 +99,7 @@ if (!is_array($body)) {
     'ok' => false,
     'message' => 'JSON inválido',
     'activaIds' => [],
+    'terminadaIds' => [],
   ], JSON_UNESCAPED_UNICODE);
   exit;
 }
@@ -93,34 +113,43 @@ if ($id === '') {
     'ok' => false,
     'message' => 'Falta el id de la solicitud',
     'activaIds' => [],
+    'terminadaIds' => [],
   ], JSON_UNESCAPED_UNICODE);
   exit;
 }
 
-$ids = read_activa_ids();
+$store = read_store();
+$activaIds = $store['activaIds'];
+$terminadaIds = $store['terminadaIds'];
 
 if ($action === 'terminada') {
-  $ids = array_values(array_filter($ids, static fn($x) => $x !== $id));
+  $activaIds = array_values(array_filter($activaIds, static fn($x) => $x !== $id));
+  if (!in_array($id, $terminadaIds, true)) {
+    $terminadaIds[] = $id;
+  }
   $message = 'Movida a terminadas';
 } else {
-  if (!in_array($id, $ids, true)) {
-    $ids[] = $id;
+  $terminadaIds = array_values(array_filter($terminadaIds, static fn($x) => $x !== $id));
+  if (!in_array($id, $activaIds, true)) {
+    $activaIds[] = $id;
   }
   $message = 'Restaurada en activas';
 }
 
-if (!write_activa_ids($ids)) {
+if (!write_store($activaIds, $terminadaIds)) {
   http_response_code(500);
   echo json_encode([
     'ok' => false,
     'message' => 'No se pudo guardar en el servidor (permisos de escritura)',
     'activaIds' => [],
+    'terminadaIds' => [],
   ], JSON_UNESCAPED_UNICODE);
   exit;
 }
 
 echo json_encode([
   'ok' => true,
-  'activaIds' => $ids,
+  'activaIds' => $activaIds,
+  'terminadaIds' => $terminadaIds,
   'message' => $message,
 ], JSON_UNESCAPED_UNICODE);

@@ -1,6 +1,7 @@
 export type StatusStoreResult = {
   ok: boolean
   activaIds: string[]
+  terminadaIds: string[]
   message?: string
 }
 
@@ -13,18 +14,30 @@ function endpoint(path = 'status-solicitud.php'): string {
   }
 }
 
-export async function fetchActivaIds(): Promise<string[]> {
+export async function fetchStatusStore(): Promise<{
+  activaIds: string[]
+  terminadaIds: string[]
+}> {
   try {
     const res = await fetch(endpoint(), {
       headers: { Accept: 'application/json' },
       cache: 'no-store',
     })
-    if (!res.ok) return []
+    if (!res.ok) return { activaIds: [], terminadaIds: [] }
     const data = (await res.json()) as StatusStoreResult
-    return Array.isArray(data.activaIds) ? data.activaIds : []
+    return {
+      activaIds: Array.isArray(data.activaIds) ? data.activaIds : [],
+      terminadaIds: Array.isArray(data.terminadaIds) ? data.terminadaIds : [],
+    }
   } catch {
-    return []
+    return { activaIds: [], terminadaIds: [] }
   }
+}
+
+/** @deprecated Prefer fetchStatusStore */
+export async function fetchActivaIds(): Promise<string[]> {
+  const store = await fetchStatusStore()
+  return store.activaIds
 }
 
 async function postStatus(
@@ -41,11 +54,17 @@ async function postStatus(
   })
   const data = (await res.json().catch(() => null)) as StatusStoreResult | null
   if (!data) {
-    return { ok: false, activaIds: [], message: 'No se pudo completar la acción' }
+    return {
+      ok: false,
+      activaIds: [],
+      terminadaIds: [],
+      message: 'No se pudo completar la acción',
+    }
   }
   return {
     ok: !!data.ok,
     activaIds: Array.isArray(data.activaIds) ? data.activaIds : [],
+    terminadaIds: Array.isArray(data.terminadaIds) ? data.terminadaIds : [],
     message: data.message,
   }
 }

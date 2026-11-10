@@ -277,8 +277,32 @@ export function countTableroEstados(rows: TableroRow[]): TableroEstadoCount[] {
     .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'es'))
 }
 
+/** Conteo de activaciones por alcaldía / municipio (zonas más visitadas). */
+export function countTableroMunicipios(rows: TableroRow[]): TableroEstadoCount[] {
+  const map = new Map<string, number>()
+  for (const row of rows) {
+    const label = String(row.municipio || '').trim() || 'SIN MUNICIPIO'
+    map.set(label, (map.get(label) || 0) + 1)
+  }
+  return [...map.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'es'))
+}
+
+/** Top N zonas; el resto se agrupa en "Otros". */
+export function topTableroZones(
+  zones: TableroEstadoCount[],
+  limit = 8,
+): TableroEstadoCount[] {
+  if (zones.length <= limit) return zones
+  const top = zones.slice(0, limit)
+  const rest = zones.slice(limit).reduce((sum, z) => sum + z.value, 0)
+  if (rest <= 0) return top
+  return [...top, { label: 'Otros', value: rest }]
+}
+
 export function colorForEstado(label: string, index: number): string {
-  if (/sin estado/i.test(label)) return '#6b7280'
+  if (/sin estado|sin municipio|otros/i.test(label)) return '#6b7280'
   return ESTADO_CHART_COLORS[index % ESTADO_CHART_COLORS.length]
 }
 

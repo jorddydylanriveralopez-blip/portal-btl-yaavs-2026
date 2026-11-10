@@ -6,7 +6,9 @@ import {
   colorForEstado,
   countTableroEstados,
   countTableroEstatus,
+  countTableroMunicipios,
   countUniqueSucursales,
+  topTableroZones,
   type ReporteEntry,
   type TableroEstadoCount,
   type TableroEstatus,
@@ -212,6 +214,7 @@ function ChartResumen({
   reagendada,
   programada,
   estados,
+  municipios,
   activaciones,
   sucursales,
   rangoLabel,
@@ -221,6 +224,7 @@ function ChartResumen({
   reagendada: number
   programada: number
   estados: TableroEstadoCount[]
+  municipios: TableroEstadoCount[]
   activaciones: number
   sucursales: number
   rangoLabel: string
@@ -232,7 +236,7 @@ function ChartResumen({
     { key: 'programada', label: 'Programadas', value: programada, color: '#1f4e79' },
   ]
 
-  const estadoItems = estados.map((e, i) => ({
+  const zonaItems = topTableroZones(municipios, 8).map((e, i) => ({
     key: e.label,
     label: e.label,
     value: e.value,
@@ -270,10 +274,10 @@ function ChartResumen({
         />
       </div>
 
-      <div className="tablero-chart" aria-label="Resumen por estado">
-        <h3 className="tablero-chart-title">Resumen por estado</h3>
+      <div className="tablero-chart" aria-label="Zonas más visitadas">
+        <h3 className="tablero-chart-title">Zonas más visitadas</h3>
         {rangoLabel ? <p className="tablero-chart-range">{rangoLabel}</p> : null}
-        <div className="tablero-kpi-row" aria-label="Totales del periodo">
+        <div className="tablero-kpi-row tablero-kpi-row-4" aria-label="Totales del periodo">
           <div className="tablero-kpi">
             <span className="tablero-kpi-label">Activaciones</span>
             <strong className="tablero-kpi-value">{activaciones}</strong>
@@ -283,15 +287,19 @@ function ChartResumen({
             <strong className="tablero-kpi-value">{sucursales}</strong>
           </div>
           <div className="tablero-kpi">
+            <span className="tablero-kpi-label">Alcaldías / Municipios</span>
+            <strong className="tablero-kpi-value">{municipios.length}</strong>
+          </div>
+          <div className="tablero-kpi">
             <span className="tablero-kpi-label">Estados</span>
             <strong className="tablero-kpi-value">{estados.length}</strong>
           </div>
         </div>
         <DonutChart
-          items={estadoItems}
-          emptyLabel="Sin activaciones en el periodo"
-          ariaLabel={`Activaciones por estado: ${estadoItems.map((i) => `${i.label} ${i.value}`).join(', ') || 'sin datos'}`}
-          filterId="pie-estados"
+          items={zonaItems}
+          emptyLabel="Sin alcaldías / municipios en el periodo"
+          ariaLabel={`Zonas más visitadas: ${zonaItems.map((i) => `${i.label} ${i.value}`).join(', ') || 'sin datos'}`}
+          filterId="pie-zonas"
         />
       </div>
     </div>
@@ -343,6 +351,7 @@ export default function TableroActivacionView({
   )
   const chart = useMemo(() => countTableroEstatus(rows), [rows])
   const estadosChart = useMemo(() => countTableroEstados(rows), [rows])
+  const municipiosChart = useMemo(() => countTableroMunicipios(rows), [rows])
   const sucursales = useMemo(() => countUniqueSucursales(rows), [rows])
   const rangoLabel = useMemo(
     () => formatRangoLabel(fechaFrom, fechaTo),
@@ -415,6 +424,7 @@ export default function TableroActivacionView({
             reagendada={chart.reagendada}
             programada={chart.programada}
             estados={estadosChart}
+            municipios={municipiosChart}
             activaciones={rows.length}
             sucursales={sucursales}
             rangoLabel={rangoLabel}

@@ -368,10 +368,10 @@ export default function TableroActivacionView({
   }
 
   return (
-    <section className="tablero-section" aria-label="Tablero ACTIVACION BTL">
+    <section className="tablero-section" aria-label="Tablero eventos de promotoria">
       <header className="tablero-head">
         <div>
-          <h2 className="tablero-title">ACTIVACION BTL</h2>
+          <h2 className="tablero-title">Tablero eventos de promotoria</h2>
           <p className="tablero-lede">
             Filtra por Estado, Municipio y Desde/Hasta para ver activaciones con su ubicación.
             Estatus, fecha reagendada y comentarios son editables.

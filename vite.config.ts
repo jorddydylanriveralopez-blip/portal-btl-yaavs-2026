@@ -9,8 +9,29 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url))
 const DELETED_STORE = path.join(rootDir, 'public', 'deleted-solicitudes.json')
 const STATUS_STORE = path.join(rootDir, 'public', 'status-solicitudes.json')
 const TABLERO_META_STORE = path.join(rootDir, 'public', 'tablero-meta.json')
+const TRADE_STORE = path.join(rootDir, 'public', 'trade-marketing.json')
+const TRADE_UPLOADS = path.join(rootDir, 'public', 'trade-uploads')
 const DELETE_PASSWORDS = new Set(['orlando01', 'Noemi2026'])
 const TABLERO_ESTATUS = new Set(['REALIZADA', 'PROGRAMADA', 'CANCELADA', 'REAGENDADA'])
+
+type TradeEntry = {
+  id: string
+  solicitudId?: string
+  fecha: string
+  clave: string
+  ejecutivo: string
+  gerente: string
+  municipioEstado: string
+  satisfaccion: string
+  satisfaccionImagenes: [string, string]
+  analisis: string
+  ventasXrayImagen: string
+  ventasXray: string
+  ventasXrayAnalisis: string
+  ventasEncuesta: string
+  createdAt?: string
+  updatedAt?: string
+}
 
 type ConnectNext = () => void
 
@@ -145,6 +166,131 @@ function writeTableroMeta(rows: Record<string, TableroMetaRow>) {
   return rows
 }
 
+function clipStr(value: unknown, max: number): string {
+  const t = String(value ?? '').trim()
+  return t.slice(0, max)
+}
+
+function normalizeTradeImages(raw: unknown): [string, string] {
+  const out: [string, string] = ['', '']
+  if (!Array.isArray(raw)) return out
+  for (let i = 0; i < 2; i++) {
+    const v = typeof raw[i] === 'string' ? raw[i].trim() : ''
+    if (!v) continue
+    if (v.startsWith('trade-uploads/') && /^trade-uploads\/[a-zA-Z0-9._-]+$/.test(v)) {
+      out[i] = v
+    } else if (v.startsWith('data:image/')) {
+      out[i] = v
+    }
+  }
+  return out
+}
+
+function deleteTradeUpload(rel: string) {
+  if (!rel.startsWith('trade-uploads/') || !/^trade-uploads\/[a-zA-Z0-9._-]+$/.test(rel)) {
+    return
+  }
+  const full = path.join(rootDir, 'public', rel)
+  if (fs.existsSync(full)) fs.unlinkSync(full)
+}
+
+function persistTradeImage(
+  id: string,
+  tag: string,
+  value: string,
+  previous: string,
+): string {
+  const v = value.trim()
+  const safeTag = tag.replace(/[^a-zA-Z0-9_-]/g, '') || 'img'
+  if (!v) {
+    if (previous) deleteTradeUpload(previous)
+    return ''
+  }
+  if (v.startsWith('trade-uploads/') && /^trade-uploads\/[a-zA-Z0-9._-]+$/.test(v)) {
+    return v
+  }
+  const m = v.match(/^data:image\/(jpeg|jpg|png|webp);base64,/i)
+  if (!m) return previous
+  const ext = m[1].toLowerCase() === 'jpeg' ? 'jpg' : m[1].toLowerCase()
+  const b64 = v.slice(v.indexOf(',') + 1)
+  const bin = Buffer.from(b64, 'base64')
+  if (bin.length < 32 || bin.length > 4_500_000) return previous
+  if (!fs.existsSync(TRADE_UPLOADS)) fs.mkdirSync(TRADE_UPLOADS, { recursive: true })
+  const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '') || 'tm'
+  const rel = `trade-uploads/${safeId}-${safeTag}.${ext}`
+  fs.writeFileSync(path.join(rootDir, 'public', rel), bin)
+  if (previous && previous !== rel) deleteTradeUpload(previous)
+  return rel
+}
+
+function readTradeEntries(): TradeEntry[] {
+  try {
+    if (!fs.existsSync(TRADE_STORE)) return []
+    const raw = fs.readFileSync(TRADE_STORE, 'utf8')
+    const data = JSON.parse(raw) as { entries?: TradeEntry[] }
+    if (!Array.isArray(data.entries)) return []
+    return data.entries
+      .filter((e) => e && typeof e.id === 'string' && e.id)
+      .map((e) => ({
+        ...e,
+        satisfaccionImagenes: normalizeTradeImages(e.satisfaccionImagenes).map((img) =>
+          img.startsWith('data:image/') ? '' : img,
+        ) as [string, string],
+        ventasXrayImagen:
+          typeof e.ventasXrayImagen === 'string' &&
+          e.ventasXrayImagen.startsWith('trade-uploads/')
+            ? e.ventasXrayImagen
+            : '',
+        ventasXrayAnalisis:
+          typeof e.ventasXrayAnalisis === 'string' ? e.ventasXrayAnalisis : '',
+      }))
+  } catch {
+    return []
+  }
+}
+
+function writeTradeEntries(entries: TradeEntry[]): TradeEntry[] {
+  const sorted = [...entries].sort((a, b) =>
+    String(b.fecha || '').localeCompare(String(a.fecha || '')),
+  )
+  fs.writeFileSync(
+    TRADE_STORE,
+    `${JSON.stringify({ entries: sorted, updatedAt: new Date().toISOString() }, null, 2)}\n`,
+    'utf8',
+  )
+  return sorted
+}
+
+function cleanTradeEntry(row: Partial<TradeEntry> & { id: string }): TradeEntry | null {
+  const fecha = clipStr(row.fecha, 10)
+  if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return null
+  const imgs = normalizeTradeImages(row.satisfaccionImagenes).map((img) =>
+    img.startsWith('data:image/') ? '' : img,
+  ) as [string, string]
+  return {
+    id: row.id,
+    solicitudId: clipStr(row.solicitudId, 80),
+    fecha,
+    clave: clipStr(row.clave, 80),
+    ejecutivo: clipStr(row.ejecutivo, 120),
+    gerente: clipStr(row.gerente, 120),
+    municipioEstado: clipStr(row.municipioEstado, 160),
+    satisfaccion: clipStr(row.satisfaccion, 2000),
+    satisfaccionImagenes: imgs,
+    analisis: clipStr(row.analisis, 4000),
+    ventasXrayImagen:
+      typeof row.ventasXrayImagen === 'string' &&
+      row.ventasXrayImagen.startsWith('trade-uploads/')
+        ? row.ventasXrayImagen
+        : '',
+    ventasXray: clipStr(row.ventasXray, 500),
+    ventasXrayAnalisis: clipStr(row.ventasXrayAnalisis, 2000),
+    ventasEncuesta: clipStr(row.ventasEncuesta, 500),
+    createdAt: row.createdAt || new Date().toISOString(),
+    updatedAt: row.updatedAt || new Date().toISOString(),
+  }
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -152,6 +298,62 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
     req.on('error', reject)
   })
+}
+
+function readRawBody(req: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
+    req.on('error', reject)
+  })
+}
+
+/** Parser mínimo multipart para un archivo `file` + campos texto. */
+function parseMultipart(
+  buf: Buffer,
+  contentType: string,
+): { fields: Record<string, string>; file?: { filename: string; data: Buffer; mime: string } } {
+  const m = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)
+  const boundary = (m?.[1] || m?.[2] || '').trim()
+  if (!boundary) return { fields: {} }
+  const sep = Buffer.from(`--${boundary}`)
+  const fields: Record<string, string> = {}
+  let file: { filename: string; data: Buffer; mime: string } | undefined
+  let start = buf.indexOf(sep)
+  while (start >= 0) {
+    const afterSep = start + sep.length
+    if (buf[afterSep] === 45 && buf[afterSep + 1] === 45) break // --
+    let partStart = afterSep
+    if (buf[partStart] === 13 && buf[partStart + 1] === 10) partStart += 2
+    const next = buf.indexOf(sep, partStart)
+    if (next < 0) break
+    let partEnd = next
+    if (partEnd >= 2 && buf[partEnd - 2] === 13 && buf[partEnd - 1] === 10) partEnd -= 2
+    const part = buf.subarray(partStart, partEnd)
+    const hdrEnd = part.indexOf('\r\n\r\n')
+    if (hdrEnd < 0) {
+      start = next
+      continue
+    }
+    const headers = part.subarray(0, hdrEnd).toString('utf8')
+    const body = part.subarray(hdrEnd + 4)
+    const nameM = headers.match(/name="([^"]+)"/i)
+    const name = nameM?.[1] || ''
+    const fileM = headers.match(/filename="([^"]*)"/i)
+    if (fileM && name === 'file') {
+      const mimeM = headers.match(/Content-Type:\s*([^\r\n]+)/i)
+      file = {
+        filename: fileM[1] || 'upload.bin',
+        data: Buffer.from(body),
+        mime: (mimeM?.[1] || 'application/octet-stream').trim(),
+      }
+    } else if (name) {
+      fields[name] = body.toString('utf8')
+    }
+    start = next
+  }
+  return { fields, file }
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown) {
@@ -299,6 +501,162 @@ function localApiPlugin(): Plugin {
         return
       }
       sendJson(res, 405, { ok: false, message: 'Método no permitido' })
+      return
+    }
+
+    if (rawUrl.startsWith('/trade-marketing.php')) {
+      if (req.method === 'OPTIONS') {
+        res.statusCode = 204
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept')
+        res.end()
+        return
+      }
+      if (req.method === 'GET') {
+        sendJson(res, 200, { ok: true, entries: readTradeEntries() })
+        return
+      }
+      if (req.method === 'POST') {
+        try {
+          const ctype = String(req.headers['content-type'] || '')
+          if (ctype.includes('multipart/form-data')) {
+            const rawBuf = await readRawBody(req)
+            const parsed = parseMultipart(rawBuf, ctype)
+            const actionUp = String(parsed.fields.action || 'upload').toLowerCase()
+            if (actionUp !== 'upload') {
+              sendJson(res, 400, { ok: false, message: 'Acción de subida inválida' })
+              return
+            }
+            const file = parsed.file
+            if (!file || file.data.length < 32 || file.data.length > 4_500_000) {
+              sendJson(res, 400, {
+                ok: false,
+                message: 'Archivo inválido o demasiado grande (máx 4.5 MB)',
+              })
+              return
+            }
+            const mimeMap: Record<string, string> = {
+              'image/jpeg': 'jpg',
+              'image/jpg': 'jpg',
+              'image/png': 'png',
+              'image/webp': 'webp',
+            }
+            const ext = mimeMap[file.mime]
+            if (!ext) {
+              sendJson(res, 400, { ok: false, message: 'Solo se permiten JPG, PNG o WEBP' })
+              return
+            }
+            const tag =
+              (parsed.fields.tag || 'img').replace(/[^a-zA-Z0-9_-]/g, '') || 'img'
+            let id =
+              (parsed.fields.id || '').replace(/[^a-zA-Z0-9_-]/g, '') || ''
+            if (!id) id = crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+            if (!fs.existsSync(TRADE_UPLOADS)) {
+              fs.mkdirSync(TRADE_UPLOADS, { recursive: true })
+            }
+            const rel = `trade-uploads/${id}-${tag}.${ext}`
+            fs.writeFileSync(path.join(rootDir, 'public', rel), file.data)
+            sendJson(res, 200, {
+              ok: true,
+              message: 'Imagen subida',
+              path: rel,
+              id,
+            })
+            return
+          }
+
+          const raw = await readBody(req)
+          const body = JSON.parse(raw || '{}') as Partial<TradeEntry> & {
+            action?: string
+            id?: string
+          }
+          const action = String(body.action || 'save').toLowerCase()
+          let entries = readTradeEntries()
+
+          if (action === 'delete') {
+            const id = String(body.id || '').trim()
+            if (!id) {
+              sendJson(res, 400, { ok: false, message: 'Falta el id', entries })
+              return
+            }
+            const doomed = entries.find((e) => e.id === id)
+            if (doomed?.satisfaccionImagenes) {
+              for (const img of doomed.satisfaccionImagenes) {
+                if (img) deleteTradeUpload(img)
+              }
+            }
+            if (doomed?.ventasXrayImagen) deleteTradeUpload(doomed.ventasXrayImagen)
+            entries = writeTradeEntries(entries.filter((e) => e.id !== id))
+            sendJson(res, 200, { ok: true, message: 'Eliminado', entries })
+            return
+          }
+
+          const now = new Date().toISOString()
+          let id = String(body.id || '').trim()
+          let createdAt = now
+          let prevImages: [string, string] = ['', '']
+          let prevXray = ''
+          if (id) {
+            const prev = entries.find((e) => e.id === id)
+            if (prev?.createdAt) createdAt = prev.createdAt
+            if (prev?.satisfaccionImagenes) {
+              prevImages = normalizeTradeImages(prev.satisfaccionImagenes)
+            }
+            if (prev?.ventasXrayImagen) prevXray = prev.ventasXrayImagen
+          } else {
+            id = crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+          }
+
+          const incoming = normalizeTradeImages(
+            (body as { satisfaccionImagenes?: unknown }).satisfaccionImagenes,
+          )
+          const savedImages: [string, string] = [
+            persistTradeImage(id, 'sat-1', incoming[0], prevImages[0]),
+            persistTradeImage(id, 'sat-2', incoming[1], prevImages[1]),
+          ]
+          const incomingXray = String(
+            (body as { ventasXrayImagen?: string }).ventasXrayImagen || '',
+          )
+          const savedXray = persistTradeImage(id, 'xray', incomingXray, prevXray)
+
+          const clean = cleanTradeEntry({
+            ...body,
+            id,
+            satisfaccionImagenes: savedImages,
+            ventasXrayImagen: savedXray,
+            createdAt,
+            updatedAt: now,
+          })
+          if (!clean || !clean.fecha) {
+            sendJson(res, 400, {
+              ok: false,
+              message: 'La fecha es obligatoria',
+              entries,
+            })
+            return
+          }
+
+          const idx = entries.findIndex((e) => e.id === id)
+          if (idx >= 0) entries[idx] = clean
+          else entries.push(clean)
+          entries = writeTradeEntries(entries)
+          sendJson(res, 200, {
+            ok: true,
+            message: idx >= 0 ? 'Actualizado' : 'Guardado',
+            entries,
+            entry: clean,
+          })
+        } catch {
+          sendJson(res, 500, {
+            ok: false,
+            message: 'Error al guardar Trade Marketing',
+            entries: [],
+          })
+        }
+        return
+      }
+      sendJson(res, 405, { ok: false, message: 'Método no permitido', entries: [] })
       return
     }
 

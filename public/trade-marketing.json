@@ -1,0 +1,47 @@
+{
+  "entries": [
+    {
+      "id": "2bbfaf9d86214bbb",
+      "solicitudId": "",
+      "fecha": "2026-11-03",
+      "clave": "",
+      "ejecutivo": "Juan Carlos",
+      "gerente": "Daniel Ugalde",
+      "municipioEstado": "Merced, Ciudad de México",
+      "satisfaccion": "Manisfestado",
+      "satisfaccionImagenes": [
+        "trade-uploads/2bbfaf9d86214bbb-sat-1.jpg",
+        "trade-uploads/2bbfaf9d86214bbb-sat-2.jpg"
+      ],
+      "analisis": "El cliente comenta que ha recibido poco seguimiento por parte del ejecutivo debido a la falta de entrega frecuente de material promocional, por lo que ha permitido el acceso a otros distribuidores.\n\nDurante la visita se entregaron lonas promocionales y se apoyó en el acomodo de chips, detectando algunos vencidos de Movistar.\n\nEl cliente indicó que, si mejoramos la frecuencia de atención y entrega de material, nos dará preferencia. Se destaca la excelente actitud y disposición de los encargados del establecimiento.",
+      "ventasXrayImagen": "",
+      "ventasXray": "",
+      "ventasXrayAnalisis": "",
+      "ventasEncuesta": "2 chips  - carrier AT&T / MOVISTAR",
+      "createdAt": "2026-11-05T19:05:34+00:00",
+      "updatedAt": "2026-11-05T19:05:34+00:00"
+    },
+    {
+      "id": "683c5a99205b46ae",
+      "solicitudId": "01bdf378-345e-4bf7-98ff-323df12a06ce",
+      "fecha": "2026-11-02",
+      "clave": "26CL03307C0B",
+      "ejecutivo": "Juan Carlos utrera",
+      "gerente": "Eduardo Vázquez",
+      "municipioEstado": "Ixtapaluca / Estado de México",
+      "satisfaccion": "Se mostro altamente satisfecha con el evento de promotoría,",
+      "satisfaccionImagenes": [
+        "trade-uploads/683c5a99205b46ae-sat-1.jpg",
+        "trade-uploads/683c5a99205b46ae-sat-2.jpg"
+      ],
+      "analisis": "Se apoyó al cliente para realizar los planes bait pospago \nExcelente actitud y servicio por parte del responsable de la tienda.",
+      "ventasXrayImagen": "trade-uploads/683c5a99205b46ae-xray.jpg",
+      "ventasXray": "3307",
+      "ventasXrayAnalisis": "Monto principal detectado: $3,307. Texto leído (resumen): Nombre_cliente 2 Total | 26CL03307C0B - VICTORIA CAMPOS SUCURSAL 3 1 [IE | Total 11",
+      "ventasEncuesta": "3 Pospagos BAIT",
+      "createdAt": "2026-11-05T17:13:56+00:00",
+      "updatedAt": "2026-11-05T17:13:56+00:00"
+    }
+  ],
+  "updatedAt": "2026-11-13T16:00:51.572Z"
+}

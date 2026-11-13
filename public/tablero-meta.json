@@ -1,0 +1,38 @@
+{
+  "rows": {
+    "4a4741ae-d850-44a3-bca6-d64bbc35cdd8": {
+      "estatus": "REAGENDADA",
+      "fechaReagendada": "2026-09-06",
+      "comentario": "Reagendada — 06/09/2026"
+    },
+    "ad5f1080-6b61-430f-802a-9d5730a0f646": {
+      "estatus": "CANCELADA",
+      "comentario": "Cancelada — Tlalpan 19/09/2026"
+    },
+    "1eb1f898-4247-41a0-8132-79aff3cfc321": {
+      "estatus": "CANCELADA",
+      "comentario": "Cancelada — Álvaro Obregón 25/09/2026"
+    },
+    "3e076782-4107-49af-a87d-a14a898e2ea1": {
+      "estatus": "CANCELADA"
+    },
+    "0f5b9576-2a30-4eea-bcd2-3d7ab367ef81": {
+      "estatus": "REALIZADA"
+    },
+    "cfda7486-f1e4-447c-b35e-005c34cc0fa3": {
+      "estatus": "REAGENDADA",
+      "fechaReagendada": "2026-11-04"
+    },
+    "cf57ad15-9db8-4d02-bfd6-af816a6e0d13": {
+      "estatus": "REALIZADA"
+    },
+    "cc3cbf0c-16f8-4cb8-b209-2d91eb31b115": {
+      "estatus": "REAGENDADA",
+      "fechaReagendada": "2026-11-23"
+    },
+    "5b162ba6-df40-4be2-be1c-0a01ecf512d7": {
+      "estatus": "REALIZADA"
+    }
+  },
+  "updatedAt": "2026-11-13T16:00:53.491Z"
+}

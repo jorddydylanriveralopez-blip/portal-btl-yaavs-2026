@@ -6,14 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:hostinger": "npm run build && rm -f hostinger-upload.zip && cd dist && zip -r ../hostinger-upload.zip .",
+    "build:hostinger": "npm run build && node scripts/prepare-hostinger-dist.mjs && rm -f hostinger-upload.zip && cd dist && zip -r ../hostinger-upload.zip .",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
     "jspdf": "^4.2.1",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

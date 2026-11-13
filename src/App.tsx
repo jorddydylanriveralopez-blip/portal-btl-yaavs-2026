@@ -31,6 +31,7 @@ import {
 import { fetchStatusStore, markAsTerminada, restoreToActivas } from './status'
 import { fetchReporteResponses } from './reporteApi'
 import TableroActivacionView from './TableroActivacionView'
+import TradeMarketingView from './TradeMarketingView'
 import type { ReporteEntry } from './tablero'
 import { filterSolicitudesForTablero } from './tablero'
 import {
@@ -66,7 +67,7 @@ const EMPTY_FILTERS: Filters = {
 
 type SortKey = 'fecha-desc' | 'fecha-asc' | 'nombre' | 'estado'
 type StatusFilter = 'todas' | 'activas' | 'terminadas'
-type PageMode = 'solicitudes' | 'tablero'
+type PageMode = 'solicitudes' | 'tablero' | 'trade'
 
 function todayKey(): string {
   const d = new Date()
@@ -447,12 +448,18 @@ export default function App() {
             <div className="brand-copy">
               <p className="eyebrow">Portal BTL 2026</p>
               <h1 className="brand-title">
-                {pageMode === 'tablero' ? 'EVENTOS DE PROMOTORÍA' : 'Solicitudes BTL'}
+                {pageMode === 'tablero'
+                  ? 'EVENTOS DE PROMOTORÍA'
+                  : pageMode === 'trade'
+                    ? 'Trade Marketing BTL'
+                    : 'Solicitudes BTL'}
               </h1>
               <p className="lede">
                 {pageMode === 'tablero'
                   ? 'Solicitudes cruzadas con reportes comerciales del Formulario 7.'
-                  : 'Consulta, filtra y descarga las solicitudes que van llegando.'}
+                  : pageMode === 'trade'
+                    ? 'Captura satisfacción, análisis y ventas; descarga PDF o vista imagen aunque el mes no haya cerrado.'
+                    : 'Consulta, filtra y descarga las solicitudes que van llegando.'}
               </p>
             </div>
           </div>
@@ -476,6 +483,15 @@ export default function App() {
                 onClick={() => setPageMode('tablero')}
               >
                 Tablero BTL
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={pageMode === 'trade'}
+                className={pageMode === 'trade' ? 'on' : ''}
+                onClick={() => setPageMode('trade')}
+              >
+                Trade MKT
               </button>
             </div>
             <div className="live-chip" aria-live="polite">
@@ -562,15 +578,26 @@ export default function App() {
                 <strong>{stats.withPhoto}</strong>
               </div>
             </>
-          ) : (
+          ) : pageMode === 'tablero' ? (
             <div className="metric">
               <span>Reportes BTL</span>
               <strong>{reportes.length}</strong>
             </div>
+          ) : (
+            <div className="metric">
+              <span>Modo</span>
+              <strong>Trade</strong>
+            </div>
           )}
           <div className="metric">
             <span>Viendo</span>
-            <strong>{pageMode === 'tablero' ? tableroRecords.length : sorted.length}</strong>
+            <strong>
+              {pageMode === 'tablero'
+                ? tableroRecords.length
+                : pageMode === 'trade'
+                  ? records.length
+                  : sorted.length}
+            </strong>
           </div>
           {updatedAt && (
             <div className="metric metric-time">
@@ -585,7 +612,7 @@ export default function App() {
           )}
         </section>
 
-        <section className="toolbar" aria-label="Filtros">
+        {pageMode !== 'trade' && <section className="toolbar" aria-label="Filtros">
           <label className="field field-search">
             <span className="sr-only">Buscar</span>
             <input
@@ -697,7 +724,7 @@ export default function App() {
               Limpiar
             </button>
           </div>
-        </section>
+        </section>}
 
         <main className="main">
           {pageMode === 'tablero' ? (
@@ -714,6 +741,8 @@ export default function App() {
                 void loadTableroSolicitudes(filters)
               }}
             />
+          ) : pageMode === 'trade' ? (
+            <TradeMarketingView solicitudes={records} onToast={showToast} />
           ) : (
             <>
           {loading && <p className="status">Cargando solicitudes…</p>}

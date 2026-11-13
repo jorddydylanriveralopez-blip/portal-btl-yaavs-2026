@@ -447,7 +447,7 @@ export default function App() {
             <div className="brand-copy">
               <p className="eyebrow">Portal BTL 2026</p>
               <h1 className="brand-title">
-                {pageMode === 'tablero' ? 'Tablero eventos de promotoria' : 'Solicitudes BTL'}
+                {pageMode === 'tablero' ? 'EVENTOS DE PROMOTORÍA' : 'Solicitudes BTL'}
               </h1>
               <p className="lede">
                 {pageMode === 'tablero'
